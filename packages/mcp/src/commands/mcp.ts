@@ -1,3 +1,4 @@
+import type { AuthorizationConfig, AuthorizationType } from '../utils/oauth/index.js'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -6,6 +7,7 @@ import chalk from 'chalk'
 import Table from 'cli-table3'
 import { Command } from 'commander'
 import ora from 'ora'
+import { OAuthManager, TokenStorage } from '../utils/oauth/index.js'
 import { error, info, success, warn } from '../utils/output.js'
 
 type TransportType = 'stdio' | 'http' | 'sse'
@@ -17,6 +19,7 @@ interface McpServerConfig {
   env?: Record<string, string>
   url?: string
   transport?: TransportType
+  authorization?: AuthorizationConfig
 }
 
 interface McpConfig {
@@ -161,6 +164,9 @@ function createAddCommand(): Command {
     .option('-t, --transport <type>', 'Transport type: stdio | http | sse', 'stdio')
     .option('-s, --scope <scope>', 'Config scope: local | project | user', 'local')
     .option('-e, --env <key=value...>', 'Environment variables')
+    .option('-a, --auth <type>', 'Authorization type: none | bearer | oauth2', 'none')
+    .option('--token <token>', 'Bearer token (for auth=bearer)')
+    .option('--scopes <scopes>', 'OAuth scopes (comma-separated, for auth=oauth2)')
     .argument('<name>', 'Server name')
     .argument('<command-or-url>', 'Command (for stdio) or URL (for http/sse)')
     .argument('[args...]', 'Additional arguments (for stdio transport)')
@@ -171,6 +177,7 @@ function createAddCommand(): Command {
         const transport = options.transport as TransportType
         const scope = options.scope as ScopeType
         const envArgs = options.env as string[] | undefined
+        const authType = options.auth as AuthorizationType
 
         const configPath = getConfigPath(scope)
         const config = readConfig(configPath)
@@ -208,6 +215,51 @@ function createAddCommand(): Command {
           }
         }
 
+        // Add authorization config
+        if (authType !== 'none') {
+          serverConfig.authorization = { type: authType }
+
+          if (authType === 'bearer') {
+            if (!options.token) {
+              spinner.fail('Bearer token required (use --token)')
+              process.exit(1)
+            }
+            serverConfig.authorization.token = options.token
+          }
+          else if (authType === 'oauth2') {
+            const scopes = options.scopes
+              ? (options.scopes as string).split(',').map((s: string) => s.trim())
+              : undefined
+
+            serverConfig.authorization.oauth = { scopes }
+          }
+        }
+
+        // Perform OAuth authentication if needed
+        if (authType === 'oauth2' && serverConfig.url) {
+          spinner.text = 'Starting OAuth authentication...'
+          spinner.stop()
+
+          info('Opening browser for authentication...')
+
+          const oauthManager = new OAuthManager({
+            serverName: name,
+            serverUrl: serverConfig.url,
+            scopes: serverConfig.authorization?.oauth?.scopes,
+          })
+
+          try {
+            await oauthManager.authorize()
+            success('OAuth authentication successful!')
+          }
+          catch (authErr) {
+            error(`OAuth authentication failed: ${authErr instanceof Error ? authErr.message : String(authErr)}`)
+            process.exit(1)
+          }
+
+          spinner.start('Saving configuration...')
+        }
+
         // Update config
         config.mcpServers[name] = serverConfig
         writeConfig(configPath, config)
@@ -234,6 +286,10 @@ function createAddCommand(): Command {
 
         if (serverConfig.env && Object.keys(serverConfig.env).length > 0) {
           info(`Environment: ${Object.keys(serverConfig.env).join(', ')}`)
+        }
+
+        if (authType !== 'none') {
+          info(`Authorization: ${authType}`)
         }
       }
       catch (err) {
@@ -460,6 +516,121 @@ function truncate(text: string, maxLength: number): string {
 }
 
 /**
+ * Create the mcp auth command
+ */
+function createAuthCommand(): Command {
+  const cmd = new Command('auth')
+    .description('Manage OAuth authentication for MCP servers')
+
+  // mcp auth <server> - Authenticate or re-authenticate
+  cmd
+    .argument('[server]', 'Server name to authenticate')
+    .option('-l, --list', 'List authentication status for all servers')
+    .option('-r, --revoke', 'Revoke authentication for the server')
+    .action(async (server: string | undefined, options) => {
+      try {
+        const storage = new TokenStorage()
+
+        // List mode
+        if (options.list) {
+          const servers = getAllServers()
+          const oauthServers = Array.from(servers.entries())
+            .filter(([_, s]) => s.config.authorization?.type === 'oauth2')
+
+          if (oauthServers.length === 0) {
+            info('No OAuth servers configured.')
+            return
+          }
+
+          console.log(chalk.bold('\nOAuth Authentication Status\n'))
+
+          const table = new Table({
+            head: [chalk.cyan('Server'), chalk.cyan('URL'), chalk.cyan('Status')],
+            colWidths: [20, 40, 15],
+            style: { head: [], border: [] },
+          })
+
+          for (const [name, { config }] of oauthServers) {
+            if (!config.url)
+              continue
+
+            const hasSession = await storage.hasValidSession(config.url)
+            const status = hasSession
+              ? chalk.green('Authenticated')
+              : chalk.yellow('Not authenticated')
+
+            table.push([
+              chalk.white(name),
+              truncate(config.url, 35),
+              status,
+            ])
+          }
+
+          console.log(table.toString())
+          return
+        }
+
+        // Server-specific operations
+        if (!server) {
+          error('Server name required. Use --list to see all servers.')
+          process.exit(1)
+        }
+
+        const servers = getAllServers()
+        const serverInfo = servers.get(server)
+
+        if (!serverInfo) {
+          error(`Server "${server}" not found`)
+          process.exit(1)
+        }
+
+        const { config } = serverInfo
+
+        if (config.authorization?.type !== 'oauth2') {
+          error(`Server "${server}" is not configured for OAuth`)
+          process.exit(1)
+        }
+
+        if (!config.url) {
+          error(`Server "${server}" has no URL configured`)
+          process.exit(1)
+        }
+
+        // Revoke mode
+        if (options.revoke) {
+          const oauthManager = new OAuthManager({
+            serverName: server,
+            serverUrl: config.url,
+          })
+
+          await oauthManager.clearSession()
+          success(`Revoked authentication for "${server}"`)
+          return
+        }
+
+        // Authenticate mode
+        info(`Authenticating "${server}"...`)
+        info('Opening browser for authentication...')
+
+        const oauthManager = new OAuthManager({
+          serverName: server,
+          serverUrl: config.url,
+          scopes: config.authorization.oauth?.scopes,
+        })
+
+        await oauthManager.authorize()
+        success(`Authentication successful for "${server}"!`)
+      }
+      catch (err) {
+        error(err instanceof Error ? err.message : String(err))
+        process.exit(1)
+      }
+    })
+
+  return cmd
+}
+
+/**
  * Create the main mcp command with subcommands
  */
 export function createMcpCommand(): Command {
@@ -470,6 +641,7 @@ export function createMcpCommand(): Command {
   cmd.addCommand(createRemoveCommand())
   cmd.addCommand(createListCommand())
   cmd.addCommand(createGetCommand())
+  cmd.addCommand(createAuthCommand())
 
   return cmd
 }
