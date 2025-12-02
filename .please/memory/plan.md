@@ -134,12 +134,12 @@ interface McpServerConfig {
 - [x] `mcp auth` subcommand (list, authenticate, revoke)
 - [x] McpServerConfig extended with `authorization` field
 
-### Pending
+#### Phase 3: Index Integration ✅
+- [x] `mcp-client.ts` - MCP client for connecting to servers and fetching tools
+- [x] `mcp-config-loader.ts` - Config loader with OAuth token integration
+- [x] `index-cmd.ts` - Auto-discover MCP servers and use stored tokens
 
-#### Phase 3: Index/Call Integration
-- [ ] Modify index-cmd to use stored tokens for OAuth servers
-- [ ] Modify tool-executor for auth header injection
-- [ ] 401 handling with automatic refresh
+### Pending
 
 #### Phase 4: Testing
 - [ ] Unit tests for PKCE, token storage
@@ -151,12 +151,15 @@ interface McpServerConfig {
 ## Module Structure (Implemented)
 
 ```
-packages/mcp/src/utils/oauth/
-├── index.ts                    # Public exports
-├── types.ts                    # OAuth interfaces
-├── pkce.ts                     # PKCE (S256) + state generation
-├── token-storage.ts            # ~/.please/oauth/tokens/<hash>.json
-└── oauth-manager.ts            # Complete flow: discovery → registration → auth → tokens
+packages/mcp/src/utils/
+├── oauth/
+│   ├── index.ts                # Public exports
+│   ├── types.ts                # OAuth interfaces
+│   ├── pkce.ts                 # PKCE (S256) + state generation
+│   ├── token-storage.ts        # ~/.please/oauth/tokens/<hash>.json
+│   └── oauth-manager.ts        # Complete flow: discovery → registration → auth → tokens
+├── mcp-client.ts               # MCP client for server connections
+└── mcp-config-loader.ts        # Config loader with OAuth integration
 ```
 
 ---
