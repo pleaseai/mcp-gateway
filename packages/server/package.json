@@ -1,6 +1,6 @@
 {
   "name": "@pleaseai/mcp-server",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "MCP server for tool search",
   "type": "module",
   "main": "dist/index.js",
@@ -19,11 +19,14 @@
   },
   "dependencies": {
     "@pleaseai/mcp-core": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "zod": "^3.24.1"
+    "@modelcontextprotocol/sdk": "catalog:",
+    "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1",
-    "typescript": "^5.7.2"
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "publishConfig": {
+    "tag": "beta"
   }
 }

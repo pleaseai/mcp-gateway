@@ -1,10 +1,25 @@
 {
   "name": "@pleaseai/mcp-monorepo",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "typescript": "^5.7.2",
+      "@types/node": "^22.10.1",
+      "zod": "^3.24.1",
+      "@modelcontextprotocol/sdk": "^1.0.0",
+      "@huggingface/transformers": "^3.4.1",
+      "openai": "^4.76.0",
+      "yaml": "^2.6.1",
+      "chalk": "^5.3.0",
+      "cli-table3": "^0.6.5",
+      "commander": "^12.1.0",
+      "ora": "^8.1.1"
+    }
+  },
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",

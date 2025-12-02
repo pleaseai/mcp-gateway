@@ -18,13 +18,13 @@
   "dependencies": {
     "@pleaseai/mcp-core": "workspace:*",
     "@pleaseai/mcp-server": "workspace:*",
-    "chalk": "^5.3.0",
-    "cli-table3": "^0.6.5",
-    "commander": "^12.1.0",
-    "ora": "^8.1.1"
+    "chalk": "catalog:",
+    "cli-table3": "catalog:",
+    "commander": "catalog:",
+    "ora": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1",
-    "typescript": "^5.7.2"
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
   }
 }

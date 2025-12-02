@@ -1,6 +1,6 @@
 {
   "name": "@pleaseai/mcp-core",
-  "version": "0.1.0",
+  "version": "0.1.0-beta.1",
   "description": "Core search engine for MCP tools",
   "type": "module",
   "main": "dist/index.js",
@@ -19,12 +19,15 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.4.1",
-    "openai": "^4.76.0",
-    "yaml": "^2.6.1"
+    "@huggingface/transformers": "catalog:",
+    "openai": "catalog:",
+    "yaml": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^22.10.1",
-    "typescript": "^5.7.2"
+    "@types/node": "catalog:",
+    "typescript": "catalog:"
+  },
+  "publishConfig": {
+    "tag": "beta"
   }
 }
