@@ -1,6 +1,3 @@
-// Re-export server
-export { McpToolSearchServer } from './server.js'
-
 // Re-export constants
 export {
   DEFAULT_EMBEDDING_PROVIDER,
@@ -10,6 +7,9 @@ export {
   MCP_SERVER_NAME,
   PACKAGE_NAME,
 } from './constants.js'
+
+// Re-export server
+export { McpToolSearchServer } from './server.js'
 
 // Re-export types from core
 export type {

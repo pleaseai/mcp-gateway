@@ -1,11 +1,11 @@
-# MCP Tool Search
+# MCP Please ( MCP Tool Search )
 
 MCP server and CLI for searching MCP tools using **regex**, **BM25**, or **semantic (embedding)** search.
 
 ## Monorepo Structure
 
 ```
-mcp-search/
+mcp-please/
 ├── packages/
 │   ├── core/                # Core search engine (@pleaseai/mcp-core)
 │   └── mcp/                 # CLI + MCP server (@pleaseai/mcp)

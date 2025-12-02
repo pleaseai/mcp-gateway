@@ -40,7 +40,13 @@
     "@commitlint/cli": "^20.1.0",
     "@commitlint/config-conventional": "^20.0.0",
     "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
     "turbo": "^2.6.1",
     "typescript": "^5.9.3"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,mjs,cjs}": [
+      "eslint --fix --cache"
+    ]
   }
 }

@@ -204,8 +204,8 @@ function writeTomlConfig(configPath: string, serverName: string, indexPath: stri
   }
 
   // Append new server config
-  content = content.trimEnd() + '\n' + generateTomlEntry(serverName, indexPath)
-  writeFileSync(configPath, content.trim() + '\n')
+  content = `${content.trimEnd()}\n${generateTomlEntry(serverName, indexPath)}`
+  writeFileSync(configPath, `${content.trim()}\n`)
 }
 
 /**
