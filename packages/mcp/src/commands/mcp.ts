@@ -90,6 +90,37 @@ function writeConfig(configPath: string, config: McpConfig): void {
 }
 
 /**
+ * Ensure mcp.local.json is in .please/.gitignore
+ */
+function ensureGitignore(): void {
+  const gitignorePath = join(process.cwd(), '.please', '.gitignore')
+  const entry = 'mcp.local.json'
+
+  let content = ''
+  if (existsSync(gitignorePath)) {
+    content = readFileSync(gitignorePath, 'utf-8')
+    // Check if entry already exists
+    const lines = content.split('\n').map(line => line.trim())
+    if (lines.includes(entry)) {
+      return
+    }
+  }
+  else {
+    // Ensure .please directory exists
+    const dir = dirname(gitignorePath)
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true })
+    }
+  }
+
+  // Append entry
+  const newContent = content.endsWith('\n') || content === ''
+    ? `${content}${entry}\n`
+    : `${content}\n${entry}\n`
+  writeFileSync(gitignorePath, newContent)
+}
+
+/**
  * Get all config paths in order of precedence
  */
 function getAllConfigPaths(): { scope: ScopeType, path: string }[] {
@@ -180,6 +211,11 @@ function createAddCommand(): Command {
         // Update config
         config.mcpServers[name] = serverConfig
         writeConfig(configPath, config)
+
+        // Ensure mcp.local.json is gitignored when using local scope
+        if (scope === 'local') {
+          ensureGitignore()
+        }
 
         spinner.succeed(`Added MCP server "${name}"`)
         success(`Config written to: ${configPath}`)
