@@ -13,6 +13,16 @@ export interface JsonSchema {
 }
 
 /**
+ * Tool metadata for tracking source and execution info
+ */
+export interface ToolMeta {
+  /** Name of the MCP server that provides this tool */
+  server?: string
+  /** Additional metadata */
+  [key: string]: unknown
+}
+
+/**
  * Tool definition following MCP specification
  */
 export interface ToolDefinition {
@@ -22,6 +32,8 @@ export interface ToolDefinition {
   inputSchema: JsonSchema
   outputSchema?: JsonSchema
   metadata?: Record<string, unknown>
+  /** Internal metadata for tool tracking */
+  _meta?: ToolMeta
 }
 
 /**

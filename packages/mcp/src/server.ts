@@ -1,5 +1,6 @@
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import type { EmbeddingProvider, PersistedIndex, SearchMode, ServerConfig } from '@pleaseai/mcp-core'
+import type { MergedServerEntry } from './utils/mcp-config.js'
 import { createRequire } from 'node:module'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
@@ -9,15 +10,17 @@ import {
   SearchOrchestrator,
 } from '@pleaseai/mcp-core'
 import { z } from 'zod/v3'
+import { loadAllMcpServers } from './utils/mcp-config.js'
+import { ToolExecutor } from './utils/tool-executor.js'
 
 const require = createRequire(import.meta.url)
 const { name, version } = require('../package.json') as { name: string, version: string }
 
 // ============================================================================
-// Tool: tool_search
+// Tool: search_tools
 // ============================================================================
 
-const ToolSearchInputSchema = {
+const SearchToolsInputSchema = {
   query: z.string().describe('Search query string (e.g., "file operations", "database", "read.*")'),
   mode: z
     .enum(['regex', 'bm25', 'embedding'])
@@ -34,14 +37,14 @@ const ToolSearchInputSchema = {
     .describe('Minimum similarity score threshold (0-1)'),
 }
 
-interface ToolSearchInput {
+interface SearchToolsInput {
   query: string
   mode: 'regex' | 'bm25' | 'embedding'
   top_k: number
   threshold: number
 }
 
-const TOOL_SEARCH_DESCRIPTION = `Search for tools using regex, BM25, or semantic search. Returns matching tools ranked by relevance.
+const SEARCH_TOOLS_DESCRIPTION = `Search for tools using regex, BM25, or semantic search. Returns matching tools ranked by relevance.
 
 When to use:
 - Finding the right tool for a specific task
@@ -54,12 +57,12 @@ Examples:
 - query: "tools for sending messages" with mode: "embedding" → semantic search`
 
 // ============================================================================
-// Tool: tool_search_info
+// Tool: get_index_info
 // ============================================================================
 
-const ToolSearchInfoInputSchema = {}
+const GetIndexInfoInputSchema = {}
 
-const TOOL_SEARCH_INFO_DESCRIPTION = `Get information about the tool search index.
+const GET_INDEX_INFO_DESCRIPTION = `Get information about the tool search index.
 
 Returns: total tool count, available search modes, embedding status, and index metadata.
 
@@ -69,20 +72,20 @@ When to use:
 - Verify index is loaded correctly`
 
 // ============================================================================
-// Tool: tool_search_list
+// Tool: list_tools
 // ============================================================================
 
-const ToolSearchListInputSchema = {
+const ListToolsInputSchema = {
   limit: z.number().optional().default(100).describe('Maximum number of tools to return (default: 100)'),
   offset: z.number().optional().default(0).describe('Starting position for pagination (default: 0)'),
 }
 
-interface ToolSearchListInput {
+interface ListToolsInput {
   limit: number
   offset: number
 }
 
-const TOOL_SEARCH_LIST_DESCRIPTION = `List all tools in the index with pagination.
+const LIST_TOOLS_DESCRIPTION = `List all tools in the index with pagination.
 
 Returns: array of tools with name, title, and description.
 
@@ -90,6 +93,36 @@ When to use:
 - Browse all available tools without searching
 - Get a complete inventory of indexed tools
 - Paginate through large tool collections`
+
+// ============================================================================
+// Tool: call_tool
+// ============================================================================
+
+const CallToolInputSchema = {
+  tool_name: z.string().describe('Name of the tool to execute'),
+  server_name: z.string().optional().describe('Name of the MCP server (optional - auto-detected from index if not provided)'),
+  arguments: z.record(z.unknown()).optional().default({}).describe('Arguments to pass to the tool'),
+}
+
+interface CallToolInput {
+  tool_name: string
+  server_name?: string
+  arguments: Record<string, unknown>
+}
+
+const CALL_TOOL_DESCRIPTION = `Execute a tool on an MCP server.
+
+Returns: Tool execution result from the target MCP server.
+
+When to use:
+- Execute a tool after finding it with search_tools
+- Call tools on registered MCP servers
+- Interact with external MCP server capabilities
+
+Notes:
+- If server_name is not provided, it will be auto-detected from the tool's metadata in the index
+- The tool must exist in the index and have a valid server reference
+- Arguments must match the tool's input schema`
 
 // ============================================================================
 // Helper functions
@@ -130,6 +163,8 @@ export class McpToolSearchServer {
   private searchOrchestrator: SearchOrchestrator
   private embeddingProvider?: EmbeddingProvider
   private cachedIndex?: PersistedIndex
+  private toolExecutor: ToolExecutor
+  private serverConfigs: MergedServerEntry[] = []
 
   constructor(config: ServerConfig) {
     this.config = config
@@ -138,16 +173,18 @@ export class McpToolSearchServer {
       defaultMode: config.defaultMode,
       defaultTopK: 10,
     })
+    this.toolExecutor = new ToolExecutor()
 
     this.server = new McpServer({
       name,
       version,
     }, {
-      instructions: `Use this server to search for tools indexed from MCP servers.
+      instructions: `Use this server to search for and execute tools indexed from MCP servers.
 Available tools:
-- tool_search: Search tools by query with regex, BM25, or embedding modes
-- tool_search_info: Get index metadata and available search modes
-- tool_search_list: List all indexed tools with pagination`,
+- search_tools: Search tools by query with regex, BM25, or embedding modes
+- list_tools: List all indexed tools with pagination
+- get_index_info: Get index metadata and available search modes
+- call_tool: Execute a tool on an MCP server`,
     })
 
     this.registerTools()
@@ -166,16 +203,17 @@ Available tools:
    * Register MCP tools
    */
   private registerTools(): void {
-    this.registerToolSearch()
-    this.registerToolSearchInfo()
-    this.registerToolSearchList()
+    this.registerSearchTools()
+    this.registerGetIndexInfo()
+    this.registerListTools()
+    this.registerCallTool()
   }
 
   /**
-   * Register tool_search tool
+   * Register search_tools tool
    */
-  private registerToolSearch(): void {
-    const handleToolSearch = async (input: ToolSearchInput): Promise<CallToolResult> => {
+  private registerSearchTools(): void {
+    const handleSearchTools = async (input: SearchToolsInput): Promise<CallToolResult> => {
       try {
         // Load index if not cached
         if (!this.cachedIndex) {
@@ -212,21 +250,21 @@ Available tools:
 
     // @ts-expect-error - zod type instantiation is excessively deep with MCP SDK
     this.server.registerTool(
-      'tool_search',
+      'search_tools',
       {
-        title: 'Tool Search',
-        description: TOOL_SEARCH_DESCRIPTION,
-        inputSchema: ToolSearchInputSchema,
+        title: 'Search Tools',
+        description: SEARCH_TOOLS_DESCRIPTION,
+        inputSchema: SearchToolsInputSchema,
       },
-      handleToolSearch,
+      handleSearchTools,
     )
   }
 
   /**
-   * Register tool_search_info tool
+   * Register get_index_info tool
    */
-  private registerToolSearchInfo(): void {
-    const handleToolSearchInfo = async (): Promise<CallToolResult> => {
+  private registerGetIndexInfo(): void {
+    const handleGetIndexInfo = async (): Promise<CallToolResult> => {
       try {
         const metadata = await this.indexManager.getIndexMetadata(this.config.indexPath)
 
@@ -242,21 +280,21 @@ Available tools:
     }
 
     this.server.registerTool(
-      'tool_search_info',
+      'get_index_info',
       {
-        title: 'Tool Search Info',
-        description: TOOL_SEARCH_INFO_DESCRIPTION,
-        inputSchema: ToolSearchInfoInputSchema,
+        title: 'Get Index Info',
+        description: GET_INDEX_INFO_DESCRIPTION,
+        inputSchema: GetIndexInfoInputSchema,
       },
-      handleToolSearchInfo,
+      handleGetIndexInfo,
     )
   }
 
   /**
-   * Register tool_search_list tool
+   * Register list_tools tool
    */
-  private registerToolSearchList(): void {
-    const handleToolSearchList = async (input: ToolSearchListInput): Promise<CallToolResult> => {
+  private registerListTools(): void {
+    const handleListTools = async (input: ListToolsInput): Promise<CallToolResult> => {
       try {
         if (!this.cachedIndex) {
           this.cachedIndex = await this.indexManager.loadIndex(this.config.indexPath)
@@ -281,13 +319,100 @@ Available tools:
     }
 
     this.server.registerTool(
-      'tool_search_list',
+      'list_tools',
       {
-        title: 'Tool Search List',
-        description: TOOL_SEARCH_LIST_DESCRIPTION,
-        inputSchema: ToolSearchListInputSchema,
+        title: 'List Tools',
+        description: LIST_TOOLS_DESCRIPTION,
+        inputSchema: ListToolsInputSchema,
       },
-      handleToolSearchList,
+      handleListTools,
+    )
+  }
+
+  /**
+   * Register call_tool tool
+   */
+  private registerCallTool(): void {
+    const handleCallTool = async (input: CallToolInput): Promise<CallToolResult> => {
+      try {
+        // Load index if not cached
+        if (!this.cachedIndex) {
+          this.cachedIndex = await this.indexManager.loadIndex(this.config.indexPath)
+        }
+
+        // Find the tool in the index
+        const indexedTool = this.cachedIndex.tools.find(t => t.tool.name === input.tool_name)
+        if (!indexedTool) {
+          return createErrorResult(`Tool not found: ${input.tool_name}`)
+        }
+
+        // Determine server name
+        let serverName = input.server_name
+        if (!serverName) {
+          // Try to get from tool metadata
+          serverName = indexedTool.tool._meta?.server as string | undefined
+          if (!serverName) {
+            return createErrorResult(
+              `Server name not provided and tool "${input.tool_name}" has no server metadata. `
+              + `Please provide server_name parameter.`,
+            )
+          }
+        }
+
+        // Check if server is registered
+        if (!this.toolExecutor.hasServer(serverName)) {
+          return createErrorResult(
+            `Server "${serverName}" is not registered. `
+            + `Available servers: ${this.toolExecutor.getRegisteredServers().join(', ') || 'none'}`,
+          )
+        }
+
+        // Execute the tool
+        const result = await this.toolExecutor.callTool(serverName, input.tool_name, input.arguments)
+
+        if (!result.success) {
+          return createErrorResult(result.error || 'Unknown error')
+        }
+
+        // Convert compatibility result to CallToolResult
+        const toolResult = result.result!
+
+        // Handle both old (toolResult) and new (content) formats
+        if ('content' in toolResult && Array.isArray(toolResult.content)) {
+          return {
+            content: toolResult.content as CallToolResult['content'],
+            isError: toolResult.isError as boolean | undefined,
+          }
+        }
+        else if ('toolResult' in toolResult) {
+          // Legacy format - wrap in text content
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(toolResult.toolResult, null, 2),
+              },
+            ],
+          }
+        }
+
+        // Fallback
+        return createTextResult(toolResult)
+      }
+      catch (err) {
+        return createErrorResult(err)
+      }
+    }
+
+    // @ts-expect-error - zod type instantiation is excessively deep with MCP SDK
+    this.server.registerTool(
+      'call_tool',
+      {
+        title: 'Call Tool',
+        description: CALL_TOOL_DESCRIPTION,
+        inputSchema: CallToolInputSchema,
+      },
+      handleCallTool,
     )
   }
 
@@ -300,6 +425,10 @@ Available tools:
       this.embeddingProvider = createEmbeddingProvider(this.config.embeddingProvider)
       this.searchOrchestrator.setEmbeddingProvider(this.embeddingProvider)
     }
+
+    // Load MCP server configurations for tool execution
+    this.serverConfigs = loadAllMcpServers()
+    this.toolExecutor.registerServers(this.serverConfigs)
 
     // Pre-load index
     try {
@@ -324,6 +453,7 @@ Available tools:
    * Stop the server
    */
   async stop(): Promise<void> {
+    await this.toolExecutor.dispose()
     await this.searchOrchestrator.dispose()
     await this.server.close()
   }

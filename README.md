@@ -28,7 +28,7 @@ mcp-please/
 
 - **Tool Source**: Load tool definitions from JSON/YAML files
 
-- **MCP Server**: Expose `tool_search` capability via MCP protocol
+- **MCP Server**: Expose `search_tools`, `list_tools`, `call_tool` capabilities via MCP protocol
 
 - **IDE Integration**: Install command for multiple IDEs
 
@@ -255,13 +255,14 @@ CLI + MCP server exposing:
 - `mcp` - Manage MCP server configurations
 
 MCP tools:
-- `tool_search` - Search with query, mode, top_k, threshold
-- `tool_search_info` - Get index metadata
-- `tool_search_list` - List all indexed tools
+- `search_tools` - Search with query, mode, top_k, threshold
+- `list_tools` - List all indexed tools with pagination
+- `get_index_info` - Get index metadata
+- `call_tool` - Execute a tool on an MCP server
 
 ## MCP Server Tools
 
-### `tool_search`
+### `search_tools`
 
 Search for tools using regex, BM25, or semantic search.
 
@@ -271,17 +272,28 @@ Search for tools using regex, BM25, or semantic search.
 - `top_k` (number, optional): Maximum results to return (default: 10)
 - `threshold` (number, optional): Minimum score threshold 0-1 (default: 0)
 
-### `tool_search_info`
+### `list_tools`
 
-Get information about the tool search index.
-
-### `tool_search_list`
-
-List all tools in the index.
+List all tools in the index with pagination.
 
 **Parameters:**
 - `limit` (number, optional): Maximum tools to return (default: 100)
 - `offset` (number, optional): Pagination offset (default: 0)
+
+### `get_index_info`
+
+Get information about the tool search index.
+
+**Returns:** Total tool count, available search modes, embedding status, and index metadata.
+
+### `call_tool`
+
+Execute a tool on an MCP server.
+
+**Parameters:**
+- `tool_name` (string, required): Name of the tool to execute
+- `server_name` (string, optional): Name of the MCP server (auto-detected from index if not provided)
+- `arguments` (object, optional): Arguments to pass to the tool
 
 ## Configuration
 
