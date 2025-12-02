@@ -47,10 +47,17 @@ interface SearchToolsInput {
 
 const SEARCH_TOOLS_DESCRIPTION = `Search for tools using regex, BM25, or semantic search. Returns matching tools ranked by relevance.
 
+You MUST call 'get_tool' after finding a tool to obtain its input schema before calling 'call_tool'. Search results only include name and description, not the full parameter schema.
+
 When to use:
 - Finding the right tool for a specific task
 - Discovering available tools by functionality
 - Looking up tools by name pattern
+
+Workflow:
+1. search_tools → Find relevant tools by query
+2. get_tool → Get input schema for the selected tool
+3. call_tool → Execute with correct parameters
 
 Examples:
 - query: "file operations" → finds tools for reading, writing, editing files
@@ -59,7 +66,7 @@ Examples:
 
 Response Format:
 - Return the matching tools ranked by relevance score
-- Each result includes tool name, description, and relevance score
+- Each result includes tool name, description, and relevance score (NOT inputSchema)
 - Results are limited by top_k parameter (default: 10)
 - Use threshold to filter out low-relevance matches`
 
@@ -514,8 +521,11 @@ Available tools:
           )
         }
 
+        // Use original tool name (without server prefix) for the actual call
+        const originalToolName = (indexedTool.tool._meta?.originalName as string) || input.tool_name
+
         // Execute the tool
-        const result = await this.toolExecutor.callTool(serverName, input.tool_name, input.arguments)
+        const result = await this.toolExecutor.callTool(serverName, originalToolName, input.arguments)
 
         if (!result.success) {
           return createErrorResult(result.error || 'Unknown error')

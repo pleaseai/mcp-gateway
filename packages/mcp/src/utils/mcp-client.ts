@@ -87,14 +87,15 @@ async function listToolsFromServer(
     // List tools
     const toolsResponse = await client.listTools()
 
-    // Convert to ToolDefinition format
+    // Convert to ToolDefinition format with server-prefixed names
     const tools: ToolDefinition[] = toolsResponse.tools.map(tool => ({
-      name: tool.name,
+      name: `${serverName}__${tool.name}`,
       description: tool.description || '',
       inputSchema: tool.inputSchema as ToolDefinition['inputSchema'],
-      // Add server name as metadata for tracking
+      // Add server name and original tool name as metadata
       _meta: {
         server: serverName,
+        originalName: tool.name,
       },
     }))
 
