@@ -47,7 +47,7 @@ interface SearchToolsInput {
 
 const SEARCH_TOOLS_DESCRIPTION = `Search for tools using regex, BM25, or semantic search. Returns matching tools ranked by relevance.
 
-You MUST call 'get_tool' after finding a tool to obtain its input schema before calling 'call_tool'. Search results only include name and description, not the full parameter schema.
+Search results only include name and description, not the full parameter schema.
 
 When to use:
 - Finding the right tool for a specific task
@@ -55,9 +55,7 @@ When to use:
 - Looking up tools by name pattern
 
 Workflow:
-1. search_tools → Find relevant tools by query
-2. get_tool → Get input schema for the selected tool
-3. call_tool → Execute with correct parameters
+search_tools → get_tool → call tool directly
 
 Examples:
 - query: "file operations" → finds tools for reading, writing, editing files
@@ -121,47 +119,6 @@ Response Format:
 - offset: Starting position for pagination`
 
 // ============================================================================
-// Tool: call_tool
-// ============================================================================
-
-const CallToolInputSchema = {
-  tool_name: z.string().describe('Name of the tool to execute'),
-  server_name: z.string().optional().describe('Name of the MCP server (optional - auto-detected from index if not provided)'),
-  arguments: z.record(z.unknown()).optional().default({}).describe('Arguments to pass to the tool'),
-}
-
-interface CallToolInput {
-  tool_name: string
-  server_name?: string
-  arguments: Record<string, unknown>
-}
-
-const CALL_TOOL_DESCRIPTION = `Execute a tool on an MCP server.
-
-You MUST call 'get_tool' first to obtain the tool's input schema UNLESS you already know the exact parameter structure required by the tool.
-
-Returns: Tool execution result from the target MCP server.
-
-When to use:
-- Execute a tool after finding it with search_tools
-- Call tools on registered MCP servers
-- Interact with external MCP server capabilities
-
-Selection Process:
-1. Use search_tools to find the right tool for your task
-2. Use get_tool to retrieve the input schema and understand required parameters
-3. Call call_tool with the correct arguments matching the schema
-
-Notes:
-- If server_name is not provided, it will be auto-detected from the tool's metadata in the index
-- The tool must exist in the index and have a valid server reference
-- Arguments must match the tool's input schema
-
-Response Format:
-- Returns the raw result from the target MCP server
-- May include text, images, or other content types depending on the tool`
-
-// ============================================================================
 // Tool: get_tool
 // ============================================================================
 
@@ -175,23 +132,43 @@ interface GetToolInput {
 
 const GET_TOOL_DESCRIPTION = `Get detailed information about a specific tool including its input/output schema.
 
-You MUST call this function before 'call_tool' to obtain the tool's input schema UNLESS you already know the exact parameter structure required by the tool.
+You MUST call this function before 'call_tool' to obtain the tool's input schema.
 
-Returns: Full tool definition with name, description, inputSchema, outputSchema, and server metadata.
-
-When to use:
-- After search_tools to get parameter schema before call_tool
-- To understand required/optional parameters
-- To validate arguments before execution
+Workflow:
+search_tools → get_tool → call_tool
 
 Response Format:
 - name: Tool name (use this for call_tool)
 - title: Human-readable title
-- description: Detailed description of what the tool does
-- inputSchema: JSON Schema defining required and optional parameters
-- outputSchema: JSON Schema defining the response format (if available)
-- metadata: Additional tool metadata
-- server: Name of the MCP server hosting this tool`
+- description: What the tool does
+- inputSchema: JSON Schema for parameters
+- outputSchema: Response schema (if available)
+- server: Source MCP server`
+
+// ============================================================================
+// Tool: call_tool
+// ============================================================================
+
+const CallToolInputSchema = {
+  tool_name: z.string().describe('Name of the tool to execute'),
+  arguments: z.record(z.unknown()).optional().default({}).describe('Arguments to pass to the tool'),
+}
+
+interface CallToolInput {
+  tool_name: string
+  arguments: Record<string, unknown>
+}
+
+const CALL_TOOL_DESCRIPTION = `Execute a tool on an MCP server.
+
+You MUST call 'get_tool' first to obtain the tool's input schema.
+
+Workflow:
+search_tools → get_tool → call_tool
+
+Response Format:
+- Returns the raw result from the target MCP server
+- May include text, images, or other content types depending on the tool`
 
 // ============================================================================
 // Helper functions
@@ -294,7 +271,7 @@ Available tools:
 - search_tools: Search tools by query with regex, BM25, or embedding modes
 - list_tools: List all indexed tools with pagination
 - get_index_info: Get index metadata and available search modes
-- get_tool: Get detailed tool information including input/output schema
+- get_tool: Get tool schema before calling
 - call_tool: Execute a tool on an MCP server${indexedToolsSummary}`,
     })
 
@@ -489,31 +466,20 @@ Available tools:
   private registerCallTool(): void {
     const handleCallTool = async (input: CallToolInput): Promise<CallToolResult> => {
       try {
-        // Load index if not cached
         if (!this.cachedIndex) {
           this.cachedIndex = await this.indexManager.loadIndex(this.config.indexPath)
         }
 
-        // Find the tool in the index
         const indexedTool = this.cachedIndex.tools.find(t => t.tool.name === input.tool_name)
         if (!indexedTool) {
           return createErrorResult(`Tool not found: ${input.tool_name}`)
         }
 
-        // Determine server name
-        let serverName = input.server_name
+        const serverName = indexedTool.tool._meta?.server as string | undefined
         if (!serverName) {
-          // Try to get from tool metadata
-          serverName = indexedTool.tool._meta?.server as string | undefined
-          if (!serverName) {
-            return createErrorResult(
-              `Server name not provided and tool "${input.tool_name}" has no server metadata. `
-              + `Please provide server_name parameter.`,
-            )
-          }
+          return createErrorResult(`Tool "${input.tool_name}" has no server metadata.`)
         }
 
-        // Check if server is registered
         if (!this.toolExecutor.hasServer(serverName)) {
           return createErrorResult(
             `Server "${serverName}" is not registered. `
@@ -521,20 +487,15 @@ Available tools:
           )
         }
 
-        // Use original tool name (without server prefix) for the actual call
         const originalToolName = (indexedTool.tool._meta?.originalName as string) || input.tool_name
-
-        // Execute the tool
         const result = await this.toolExecutor.callTool(serverName, originalToolName, input.arguments)
 
         if (!result.success) {
           return createErrorResult(result.error || 'Unknown error')
         }
 
-        // Convert compatibility result to CallToolResult
         const toolResult = result.result!
 
-        // Handle both old (toolResult) and new (content) formats
         if ('content' in toolResult && Array.isArray(toolResult.content)) {
           return {
             content: toolResult.content as CallToolResult['content'],
@@ -542,18 +503,11 @@ Available tools:
           }
         }
         else if ('toolResult' in toolResult) {
-          // Legacy format - wrap in text content
           return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify(toolResult.toolResult, null, 2),
-              },
-            ],
+            content: [{ type: 'text' as const, text: JSON.stringify(toolResult.toolResult, null, 2) }],
           }
         }
 
-        // Fallback
         return createTextResult(toolResult)
       }
       catch (err) {
@@ -561,7 +515,6 @@ Available tools:
       }
     }
 
-    // @ts-expect-error - zod type instantiation is excessively deep with MCP SDK
     this.server.registerTool(
       'call_tool',
       {
