@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { z } from 'zod';
+import { z } from 'zod/v3';
 import {
   IndexManager,
   SearchOrchestrator,
@@ -53,24 +53,27 @@ export class McpToolSearchServer {
    */
   private registerTools(): void {
     // Tool search tool
-    this.server.tool(
+    this.server.registerTool(
       'tool_search',
-      'Search for tools using regex, BM25, or semantic search. Returns matching tools ranked by relevance.',
       {
-        query: z.string().describe('Search query string'),
-        mode: z
-          .enum(['regex', 'bm25', 'embedding'])
-          .optional()
-          .default('bm25')
-          .describe('Search algorithm: regex (pattern matching), bm25 (term frequency), embedding (semantic)'),
-        top_k: z.number().optional().default(10).describe('Maximum number of results to return'),
-        threshold: z
-          .number()
-          .min(0)
-          .max(1)
-          .optional()
-          .default(0)
-          .describe('Minimum similarity score threshold (0-1)'),
+        title: 'Tool Search',
+        description: 'Search for tools using regex, BM25, or semantic search. Returns matching tools ranked by relevance.',
+        inputSchema: {
+          query: z.string().describe('Search query string'),
+          mode: z
+            .enum(['regex', 'bm25', 'embedding'])
+            .optional()
+            .default('bm25')
+            .describe('Search algorithm: regex (pattern matching), bm25 (term frequency), embedding (semantic)'),
+          top_k: z.number().optional().default(10).describe('Maximum number of results to return'),
+          threshold: z
+            .number()
+            .min(0)
+            .max(1)
+            .optional()
+            .default(0)
+            .describe('Minimum similarity score threshold (0-1)'),
+        },
       },
       async ({ query, mode, top_k, threshold }) => {
         try {
@@ -128,10 +131,13 @@ export class McpToolSearchServer {
     );
 
     // Index info tool
-    this.server.tool(
+    this.server.registerTool(
       'tool_search_info',
-      'Get information about the tool search index',
-      {},
+      {
+        title: 'Tool Search Info',
+        description: 'Get information about the tool search index',
+        inputSchema: {},
+      },
       async () => {
         try {
           const metadata = await this.indexManager.getIndexMetadata(this.config.indexPath);
@@ -168,12 +174,15 @@ export class McpToolSearchServer {
     );
 
     // List tools tool
-    this.server.tool(
+    this.server.registerTool(
       'tool_search_list',
-      'List all tools in the index',
       {
-        limit: z.number().optional().default(100).describe('Maximum number of tools to return'),
-        offset: z.number().optional().default(0).describe('Offset for pagination'),
+        title: 'Tool Search List',
+        description: 'List all tools in the index',
+        inputSchema: {
+          limit: z.number().optional().default(100).describe('Maximum number of tools to return'),
+          offset: z.number().optional().default(0).describe('Offset for pagination'),
+        },
       },
       async ({ limit, offset }) => {
         try {

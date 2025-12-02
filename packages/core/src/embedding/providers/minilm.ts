@@ -1,7 +1,8 @@
 import type { EmbeddingProvider } from '../provider.js';
 
-// Dynamic import type for transformers.js
-type Pipeline = Awaited<ReturnType<typeof import('@huggingface/transformers').pipeline>>;
+// Simplified type for transformers.js pipeline
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Pipeline = any;
 
 /**
  * MiniLM embedding provider using transformers.js

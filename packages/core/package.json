@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "tsup": "catalog:",
     "typescript": "catalog:"
   },
   "publishConfig": {

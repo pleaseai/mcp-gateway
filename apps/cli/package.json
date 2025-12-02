@@ -8,8 +8,8 @@
     "mcp-search": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "bun --watch src/index.ts",
+    "build": "tsup",
+    "dev": "tsup --watch",
     "start": "bun dist/index.js",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "tsup": "catalog:",
     "typescript": "catalog:"
   }
 }
