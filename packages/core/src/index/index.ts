@@ -106,13 +106,24 @@ export class IndexManager {
   /**
    * Save index to file
    */
-  async saveIndex(indexedTools: IndexedTool[], outputPath: string): Promise<void> {
-    const options = this.embeddingProvider
-      ? {
-          embeddingModel: this.embeddingProvider.name,
-          embeddingDimensions: this.embeddingProvider.dimensions,
-        }
-      : undefined
+  async saveIndex(
+    indexedTools: IndexedTool[],
+    outputPath: string,
+    saveOptions?: {
+      configHash?: string
+      configSources?: string[]
+    },
+  ): Promise<void> {
+    const options = {
+      ...(this.embeddingProvider
+        ? {
+            embeddingModel: this.embeddingProvider.name,
+            embeddingDimensions: this.embeddingProvider.dimensions,
+          }
+        : {}),
+      configHash: saveOptions?.configHash,
+      configSources: saveOptions?.configSources,
+    }
 
     await this.storage.save(indexedTools, outputPath, options)
 

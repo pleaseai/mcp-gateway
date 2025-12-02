@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -142,4 +143,44 @@ export function mergeMcpServers(sources: ConfigSource[]): MergedServerEntry[] {
 export function loadAllMcpServers(): MergedServerEntry[] {
   const sources = loadMcpConfigs()
   return mergeMcpServers(sources)
+}
+
+/**
+ * Result of computing config hash
+ */
+export interface ConfigHashResult {
+  hash: string
+  sources: string[]
+}
+
+/**
+ * Compute a hash of the current MCP server configurations
+ * Used to detect when configs have changed and index needs rebuild
+ */
+export function computeConfigHash(): ConfigHashResult {
+  const sources = loadMcpConfigs()
+  const servers = mergeMcpServers(sources)
+
+  // Sort servers by name for deterministic hashing
+  const sortedServers = [...servers].sort((a, b) => a.name.localeCompare(b.name))
+
+  // Create a normalized representation of the config
+  const configData = sortedServers.map(server => ({
+    name: server.name,
+    command: server.config.command,
+    args: server.config.args,
+    env: server.config.env,
+    url: server.config.url,
+    transport: server.config.transport,
+  }))
+
+  const hash = createHash('sha256')
+    .update(JSON.stringify(configData))
+    .digest('hex')
+    .slice(0, 16) // Use first 16 chars for brevity
+
+  return {
+    hash,
+    sources: sources.map(s => s.path),
+  }
 }

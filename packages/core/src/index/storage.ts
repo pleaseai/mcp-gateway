@@ -13,6 +13,10 @@ export interface PersistedIndex {
   hasEmbeddings: boolean
   embeddingModel?: string
   embeddingDimensions?: number
+  /** Hash of MCP server configurations used to build this index */
+  configHash?: string
+  /** Sources of MCP configurations used */
+  configSources?: string[]
   bm25Stats: BM25Stats
   tools: IndexedTool[]
 }
@@ -41,6 +45,8 @@ export class IndexStorage {
     options?: {
       embeddingModel?: string
       embeddingDimensions?: number
+      configHash?: string
+      configSources?: string[]
     },
   ): Promise<void> {
     const bm25Stats = this.computeBM25Stats(indexedTools)
@@ -54,6 +60,8 @@ export class IndexStorage {
       hasEmbeddings,
       embeddingModel: options?.embeddingModel,
       embeddingDimensions: options?.embeddingDimensions,
+      configHash: options?.configHash,
+      configSources: options?.configSources,
       bm25Stats,
       tools: indexedTools,
     }
@@ -157,6 +165,8 @@ export class IndexStorage {
       hasEmbeddings: index.hasEmbeddings,
       embeddingModel: index.embeddingModel,
       embeddingDimensions: index.embeddingDimensions,
+      configHash: index.configHash,
+      configSources: index.configSources,
     }
   }
 }

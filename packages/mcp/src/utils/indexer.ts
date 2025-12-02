@@ -6,7 +6,7 @@ import {
   IndexManager,
 } from '@pleaseai/mcp-core'
 import { discoverToolsFromServers, flattenServerTools } from './mcp-client.js'
-import { loadAllMcpServers } from './mcp-config.js'
+import { computeConfigHash, loadAllMcpServers } from './mcp-config.js'
 
 /**
  * Options for the indexing process
@@ -138,9 +138,15 @@ export async function buildAndSaveIndex(options: IndexOptions): Promise<IndexRes
     }
   }
 
-  // Save index
+  // Compute config hash for change detection
+  const configHashResult = computeConfigHash()
+
+  // Save index with config hash
   onProgress?.('Saving index...')
-  await indexManager.saveIndex(builtIndex, outputPath)
+  await indexManager.saveIndex(builtIndex, outputPath, {
+    configHash: configHashResult.hash,
+    configSources: configHashResult.sources,
+  })
 
   const hasEmbeddings = builtIndex.some(t => t.embedding && t.embedding.length > 0)
 
@@ -152,27 +158,60 @@ export async function buildAndSaveIndex(options: IndexOptions): Promise<IndexRes
 }
 
 /**
+ * Result of index rebuild check
+ */
+export interface IndexRebuildCheckResult {
+  needsRebuild: boolean
+  reason?: 'not_exists' | 'empty' | 'config_changed' | 'no_hash'
+}
+
+/**
  * Check if an index needs to be rebuilt
  *
  * Returns true if:
  * - Index doesn't exist
  * - Index is empty (no tools)
+ * - Config hash has changed (MCP server configs modified)
+ * - Index has no config hash (legacy index)
  */
 export async function indexNeedsRebuild(indexPath: string): Promise<boolean> {
+  const result = await checkIndexRebuildNeeded(indexPath)
+  return result.needsRebuild
+}
+
+/**
+ * Check if an index needs to be rebuilt with detailed reason
+ */
+export async function checkIndexRebuildNeeded(indexPath: string): Promise<IndexRebuildCheckResult> {
   const indexManager = new IndexManager()
 
   try {
     const exists = await indexManager.indexExists(indexPath)
     if (!exists) {
-      return true
+      return { needsRebuild: true, reason: 'not_exists' }
     }
 
     // Check if index has any tools
     const metadata = await indexManager.getIndexMetadata(indexPath)
-    return metadata.totalTools === 0
+    if (metadata.totalTools === 0) {
+      return { needsRebuild: true, reason: 'empty' }
+    }
+
+    // Check if config hash exists (legacy indexes won't have it)
+    if (!metadata.configHash) {
+      return { needsRebuild: true, reason: 'no_hash' }
+    }
+
+    // Check if config has changed
+    const currentConfigHash = computeConfigHash()
+    if (metadata.configHash !== currentConfigHash.hash) {
+      return { needsRebuild: true, reason: 'config_changed' }
+    }
+
+    return { needsRebuild: false }
   }
   catch {
-    return true
+    return { needsRebuild: true, reason: 'not_exists' }
   }
 }
 

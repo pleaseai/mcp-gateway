@@ -6,7 +6,7 @@ import ora from 'ora'
 import { DEFAULT_EMBEDDING_PROVIDER, DEFAULT_INDEX_PATH, DEFAULT_SEARCH_MODE } from '../constants.js'
 import { McpToolSearchServer } from '../server.js'
 import { ensurePleaseGitignore } from '../utils/gitignore.js'
-import { buildAndSaveIndex, indexNeedsRebuild } from '../utils/indexer.js'
+import { buildAndSaveIndex, checkIndexRebuildNeeded } from '../utils/indexer.js'
 import { error, info, success, warn } from '../utils/output.js'
 
 /**
@@ -25,6 +25,7 @@ export function createServeCommand(): Command {
       DEFAULT_EMBEDDING_PROVIDER,
     )
     .option('--auto-index', 'Automatically index tools from MCP servers on startup')
+    .option('--rebuild', 'Force rebuild index even if it exists (use with --auto-index)')
     .option('--no-embeddings', 'Skip embedding generation during auto-indexing')
     .option(
       '--dtype <type>',
@@ -43,6 +44,7 @@ export function createServeCommand(): Command {
         const providerType = options.provider as EmbeddingProviderType
         const indexPath = options.index as string
         const autoIndex = options.autoIndex === true
+        const forceRebuild = options.rebuild === true
         const generateEmbeddings = options.embeddings !== false
         const dtype = options.dtype as ModelDtype
         const timeout = Number.parseInt(options.timeout, 10)
@@ -50,9 +52,29 @@ export function createServeCommand(): Command {
 
         // Auto-index if enabled and index needs rebuild
         if (autoIndex) {
-          const needsRebuild = await indexNeedsRebuild(indexPath)
+          const rebuildCheck = await checkIndexRebuildNeeded(indexPath)
 
-          if (needsRebuild) {
+          // Force rebuild if --rebuild flag is set
+          const shouldRebuild = forceRebuild || rebuildCheck.needsRebuild
+
+          if (shouldRebuild) {
+            // Log reason for rebuild
+            if (forceRebuild) {
+              info('Force rebuild requested with --rebuild flag')
+            }
+            else if (rebuildCheck.reason === 'not_exists') {
+              info('Index does not exist, creating new index...')
+            }
+            else if (rebuildCheck.reason === 'empty') {
+              info('Index is empty, rebuilding...')
+            }
+            else if (rebuildCheck.reason === 'config_changed') {
+              info('MCP server configuration changed, rebuilding index...')
+            }
+            else if (rebuildCheck.reason === 'no_hash') {
+              info('Index missing config hash (legacy), rebuilding...')
+            }
+
             spinner.text = 'Auto-indexing tools from MCP servers...'
 
             try {
@@ -92,7 +114,7 @@ export function createServeCommand(): Command {
             }
           }
           else {
-            info('Index already exists, skipping auto-indexing.')
+            info('Index is up to date, skipping auto-indexing.')
           }
         }
         else {
