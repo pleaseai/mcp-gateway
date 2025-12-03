@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.2-beta.1](https://github.com/pleaseai/mcp-please/compare/mcp-v0.2.1-beta.1...mcp-v0.2.2-beta.1) (2025-12-03)
+
+
+### Features
+
+* **mcp:** add OAuth 2.1 authentication support for remote MCP servers ([#5](https://github.com/pleaseai/mcp-please/issues/5)) ([7344372](https://github.com/pleaseai/mcp-please/commit/7344372a420fa8254296dafeeebbc00afe63525b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @pleaseai/mcp-core bumped to 0.1.3-beta.1
+
 ## [0.2.1-beta.1](https://github.com/pleaseai/mcp-please/compare/mcp-v0.2.0-beta.1...mcp-v0.2.1-beta.1) (2025-12-02)
 
 
