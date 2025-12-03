@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { chmod, mkdir, readFile, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 
 const DEFAULT_CONFIG_DIR = join(homedir(), '.please', 'oauth')
 
@@ -16,7 +16,7 @@ const DEFAULT_CONFIG_DIR = join(homedir(), '.please', 'oauth')
  * Generate a hash for the server URL to use as filename
  */
 function getServerHash(serverUrl: string): string {
-  return createHash('md5').update(serverUrl).digest('hex').substring(0, 12)
+  return createHash('sha256').update(serverUrl).digest('hex').substring(0, 12)
 }
 
 /**
@@ -49,7 +49,7 @@ export class TokenStorage {
    * Ensure the storage directory exists with proper permissions
    */
   private async ensureDir(path: string): Promise<void> {
-    const dir = join(path, '..')
+    const dir = dirname(path)
     if (!existsSync(dir)) {
       await mkdir(dir, { recursive: true, mode: 0o700 })
     }
@@ -95,9 +95,10 @@ export class TokenStorage {
 
   /**
    * Update tokens in existing session
+   * Loads session including expired ones since this is typically called during token refresh
    */
   async updateTokens(serverUrl: string, tokens: OAuthTokenResponse): Promise<void> {
-    const session = await this.loadSession(serverUrl)
+    const session = await this.loadSession(serverUrl, true)
     if (!session) {
       throw new Error('No session found to update')
     }

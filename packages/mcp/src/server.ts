@@ -465,7 +465,7 @@ Common Errors:
             config: serverConfig,
             accessToken,
             toolName: originalName,
-            arguments: args as Record<string, unknown>,
+            toolArguments: args as Record<string, unknown>,
           })
 
           return {

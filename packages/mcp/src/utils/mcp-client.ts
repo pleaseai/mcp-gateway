@@ -36,19 +36,18 @@ export async function fetchToolsFromMcpServer(options: McpClientOptions): Promis
     { capabilities: {} },
   )
 
+  let tools: ToolDefinition[] = []
   try {
     const transport = await createTransport(config, accessToken)
     await client.connect(transport)
 
     const response = await client.listTools()
-    const tools = response.tools.map(tool => convertMcpToolToDefinition(tool, name))
+    tools = response.tools.map(tool => convertMcpToolToDefinition(tool, name))
 
-    await client.close()
     return tools
   }
-  catch (error) {
+  finally {
     await client.close().catch(() => {})
-    throw error
   }
 }
 
@@ -119,7 +118,7 @@ export interface CallToolOptions {
   config: McpServerConfig
   accessToken?: string
   toolName: string
-  arguments: Record<string, unknown>
+  toolArguments: Record<string, unknown>
 }
 
 export interface CallToolResult {
@@ -131,7 +130,7 @@ export interface CallToolResult {
  * Call a tool on an MCP server
  */
 export async function callToolOnMcpServer(options: CallToolOptions): Promise<CallToolResult> {
-  const { name, config, accessToken, toolName, arguments: args } = options
+  const { name, config, accessToken, toolName, toolArguments } = options
 
   const client = new Client(
     { name: `mcp-search-client-${name}`, version: '1.0.0' },
@@ -142,17 +141,14 @@ export async function callToolOnMcpServer(options: CallToolOptions): Promise<Cal
     const transport = await createTransport(config, accessToken)
     await client.connect(transport)
 
-    const result = await client.callTool({ name: toolName, arguments: args })
-
-    await client.close()
+    const result = await client.callTool({ name: toolName, arguments: toolArguments })
 
     return {
       content: result.content as CallToolResult['content'],
       isError: result.isError as boolean | undefined,
     }
   }
-  catch (error) {
+  finally {
     await client.close().catch(() => {})
-    throw error
   }
 }
