@@ -29,11 +29,13 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@inquirer/prompts": "^7.2.1",
     "@modelcontextprotocol/sdk": "catalog:",
     "@pleaseai/mcp-core": "workspace:*",
     "chalk": "catalog:",
     "cli-table3": "catalog:",
     "commander": "catalog:",
+    "open": "catalog:",
     "ora": "catalog:",
     "std-env": "catalog:",
     "zod": "catalog:"

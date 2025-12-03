@@ -43,6 +43,13 @@ export class IndexManager {
   }
 
   /**
+   * Get embedding provider
+   */
+  getEmbeddingProvider(): EmbeddingProvider | undefined {
+    return this.embeddingProvider
+  }
+
+  /**
    * Build index from tool sources
    */
   async buildIndex(
@@ -60,7 +67,7 @@ export class IndexManager {
 
     // Generate embeddings if requested
     if (options?.generateEmbeddings && this.embeddingProvider) {
-      await this.generateEmbeddings(indexedTools, options.onProgress)
+      await this.generateEmbeddingsFor(indexedTools, options.onProgress)
     }
 
     return indexedTools
@@ -68,8 +75,9 @@ export class IndexManager {
 
   /**
    * Generate embeddings for indexed tools
+   * Can be used for tools loaded from any source (files or MCP servers)
    */
-  private async generateEmbeddings(
+  async generateEmbeddingsFor(
     indexedTools: IndexedTool[],
     onProgress?: (current: number, total: number, toolName: string) => void,
   ): Promise<void> {
