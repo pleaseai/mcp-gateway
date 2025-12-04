@@ -18,6 +18,7 @@ export type { BM25Stats, PersistedIndex } from './index/storage.js'
 export {
   BM25SearchStrategy,
   EmbeddingSearchStrategy,
+  HybridSearchStrategy,
   RegexSearchStrategy,
   SearchOrchestrator,
 } from './search/index.js'

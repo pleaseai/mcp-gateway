@@ -48,4 +48,4 @@ export interface ToolReference {
 /**
  * Available search modes
  */
-export type SearchMode = 'regex' | 'bm25' | 'embedding'
+export type SearchMode = 'regex' | 'bm25' | 'embedding' | 'hybrid'
