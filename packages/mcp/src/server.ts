@@ -90,10 +90,10 @@ Response Format:
         inputSchema: {
           query: z.string().describe('Search query string'),
           mode: z
-            .enum(['regex', 'bm25', 'embedding'])
+            .enum(['regex', 'bm25', 'embedding', 'hybrid'])
             .optional()
             .default('bm25')
-            .describe('Search algorithm: regex (pattern matching), bm25 (term frequency), embedding (semantic)'),
+            .describe('Search algorithm: regex (pattern matching), bm25 (term frequency), embedding (semantic), hybrid (bm25 + embedding with RRF)'),
           top_k: z.number().optional().default(10).describe('Maximum number of results to return'),
           threshold: z
             .number()
@@ -112,8 +112,8 @@ Response Format:
             this.searchOrchestrator.setBM25Stats(this.cachedIndex.bm25Stats)
           }
 
-          // Initialize embedding provider for semantic search
-          if (mode === 'embedding' && this.embeddingProvider) {
+          // Initialize embedding provider for semantic search (embedding and hybrid modes)
+          if ((mode === 'embedding' || mode === 'hybrid') && this.embeddingProvider) {
             await this.embeddingProvider.initialize()
           }
 
@@ -180,7 +180,7 @@ Response Format:
                   {
                     indexPath: this.config.indexPath,
                     ...metadata,
-                    availableModes: ['regex', 'bm25', ...(metadata.hasEmbeddings ? ['embedding'] : [])],
+                    availableModes: ['regex', 'bm25', ...(metadata.hasEmbeddings ? ['embedding', 'hybrid'] : [])],
                   },
                   null,
                   2,

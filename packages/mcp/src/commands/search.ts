@@ -18,7 +18,7 @@ export function createSearchCommand(): Command {
   const cmd = new Command('search')
     .description('Search for tools in the index')
     .argument('<query>', 'Search query string')
-    .option('-m, --mode <mode>', 'Search mode: regex | bm25 | embedding', DEFAULT_SEARCH_MODE)
+    .option('-m, --mode <mode>', 'Search mode: regex | bm25 | embedding | hybrid', DEFAULT_SEARCH_MODE)
     .option('-k, --top-k <number>', 'Number of results to return', String(DEFAULT_TOP_K))
     .option('-t, --threshold <number>', 'Minimum score threshold (0-1)', '0')
     .option('-i, --index <path>', 'Path to index file', DEFAULT_INDEX_PATH)
@@ -50,8 +50,8 @@ export function createSearchCommand(): Command {
         // Set BM25 stats
         orchestrator.setBM25Stats(index.bm25Stats)
 
-        // Setup embedding provider for semantic search
-        if (mode === 'embedding') {
+        // Setup embedding provider for semantic search (embedding and hybrid modes)
+        if (mode === 'embedding' || mode === 'hybrid') {
           if (!index.hasEmbeddings) {
             spinner.fail('Index does not contain embeddings. Re-index with embeddings enabled.')
             process.exit(1)

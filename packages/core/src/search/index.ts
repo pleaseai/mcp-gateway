@@ -4,10 +4,12 @@ import type { IndexedTool, SearchMode, SearchOptions, SearchQuery, SearchResult 
 import type { SearchStrategy } from './strategy.js'
 import { BM25SearchStrategy } from './strategies/bm25.js'
 import { EmbeddingSearchStrategy } from './strategies/embedding.js'
+import { HybridSearchStrategy } from './strategies/hybrid.js'
 import { RegexSearchStrategy } from './strategies/regex.js'
 
 export { BM25SearchStrategy } from './strategies/bm25.js'
 export { EmbeddingSearchStrategy } from './strategies/embedding.js'
+export { HybridSearchStrategy } from './strategies/hybrid.js'
 export { RegexSearchStrategy } from './strategies/regex.js'
 export { type SearchStrategy } from './strategy.js'
 
@@ -34,10 +36,14 @@ export class SearchOrchestrator {
     this.defaultTopK = options?.defaultTopK ?? 10
 
     // Initialize strategies
+    const bm25Strategy = new BM25SearchStrategy()
+    const embeddingStrategy = new EmbeddingSearchStrategy(options?.embeddingProvider)
+
     this.strategies = new Map()
     this.strategies.set('regex', new RegexSearchStrategy())
-    this.strategies.set('bm25', new BM25SearchStrategy())
-    this.strategies.set('embedding', new EmbeddingSearchStrategy(options?.embeddingProvider))
+    this.strategies.set('bm25', bm25Strategy)
+    this.strategies.set('embedding', embeddingStrategy)
+    this.strategies.set('hybrid', new HybridSearchStrategy(bm25Strategy, embeddingStrategy))
   }
 
   /**
