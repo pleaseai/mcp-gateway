@@ -4,10 +4,10 @@
  * Update Homebrew formula with new version and checksums.
  *
  * Usage:
- *   bun scripts/update-formula.ts <version> <homebrew-tap-path>
+ *   bun scripts/update-formula.ts <version> <tag> <homebrew-tap-path>
  *
  * Example:
- *   bun scripts/update-formula.ts v0.1.0 ../homebrew-tap
+ *   bun scripts/update-formula.ts 0.2.4-beta.1 mcp-v0.2.4-beta.1 ../homebrew-tap
  */
 
 import { existsSync } from 'node:fs'
@@ -23,8 +23,8 @@ interface Checksums {
   linuxArm64: string
 }
 
-async function downloadChecksum(version: string, platform: string): Promise<string> {
-  const url = `https://github.com/${REPO}/releases/download/${version}/mcp-gateway-${platform}.sha256`
+async function downloadChecksum(tag: string, platform: string): Promise<string> {
+  const url = `https://github.com/${REPO}/releases/download/${tag}/mcp-gateway-${platform}.sha256`
   const response = await fetch(url)
 
   if (!response.ok) {
@@ -32,17 +32,26 @@ async function downloadChecksum(version: string, platform: string): Promise<stri
   }
 
   const content = await response.text()
-  return content.split(/\s+/)[0]
+  const checksum = content.split(/\s+/)[0]
+
+  // Validate SHA256 format (64 hex characters)
+  if (!/^[a-f0-9]{64}$/i.test(checksum)) {
+    throw new Error(
+      `Invalid checksum for ${platform}: expected 64 hex chars, got "${checksum.slice(0, 20)}${checksum.length > 20 ? '...' : ''}"`,
+    )
+  }
+
+  return checksum
 }
 
-async function downloadChecksums(version: string): Promise<Checksums> {
+async function downloadChecksums(tag: string): Promise<Checksums> {
   console.log('Downloading checksums...')
 
   const [darwinX64, darwinArm64, linuxX64, linuxArm64] = await Promise.all([
-    downloadChecksum(version, 'darwin-x64'),
-    downloadChecksum(version, 'darwin-arm64'),
-    downloadChecksum(version, 'linux-x64'),
-    downloadChecksum(version, 'linux-arm64'),
+    downloadChecksum(tag, 'darwin-x64'),
+    downloadChecksum(tag, 'darwin-arm64'),
+    downloadChecksum(tag, 'linux-x64'),
+    downloadChecksum(tag, 'linux-arm64'),
   ])
 
   console.log('Checksums:')
@@ -54,31 +63,29 @@ async function downloadChecksums(version: string): Promise<Checksums> {
   return { darwinX64, darwinArm64, linuxX64, linuxArm64 }
 }
 
-function generateFormula(version: string, checksums: Checksums): string {
-  const versionNoV = version.replace(/^v/, '')
-
+function generateFormula(version: string, tag: string, checksums: Checksums): string {
   return `class McpGateway < Formula
   desc "MCP server and CLI for searching tools using regex, BM25, or semantic search"
   homepage "https://github.com/pleaseai/mcp-gateway"
-  version "${versionNoV}"
+  version "${version}"
   license "MIT"
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/${version}/mcp-gateway-darwin-arm64"
+      url "https://github.com/pleaseai/mcp-gateway/releases/download/${tag}/mcp-gateway-darwin-arm64"
       sha256 "${checksums.darwinArm64}"
     else
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/${version}/mcp-gateway-darwin-x64"
+      url "https://github.com/pleaseai/mcp-gateway/releases/download/${tag}/mcp-gateway-darwin-x64"
       sha256 "${checksums.darwinX64}"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/${version}/mcp-gateway-linux-arm64"
+      url "https://github.com/pleaseai/mcp-gateway/releases/download/${tag}/mcp-gateway-linux-arm64"
       sha256 "${checksums.linuxArm64}"
     else
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/${version}/mcp-gateway-linux-x64"
+      url "https://github.com/pleaseai/mcp-gateway/releases/download/${tag}/mcp-gateway-linux-x64"
       sha256 "${checksums.linuxX64}"
     end
   end
@@ -107,10 +114,11 @@ end
 }
 
 function usage(): never {
-  console.log('Usage: bun scripts/update-formula.ts <version> <homebrew-tap-path>')
+  console.log('Usage: bun scripts/update-formula.ts <version> <tag> <homebrew-tap-path>')
   console.log('')
   console.log('Arguments:')
-  console.log('  version           Release version (e.g., v0.1.0)')
+  console.log('  version           Release version (e.g., 0.2.4-beta.1)')
+  console.log('  tag               Git tag for release (e.g., mcp-v0.2.4-beta.1)')
   console.log('  homebrew-tap-path Path to homebrew-tap repository')
   process.exit(1)
 }
@@ -118,22 +126,24 @@ function usage(): never {
 async function main() {
   const args = process.argv.slice(2)
 
-  if (args.length < 2) {
+  if (args.length < 3) {
     usage()
   }
 
-  let version = args[0]
-  const tapPath = args[1]
+  const version = args[0]
+  const tag = args[1]
+  const tapPath = args[2]
 
-  // Validate version format
-  if (!/^v?\d+\.\d+\.\d+/.test(version)) {
+  // Validate version format (supports prerelease suffixes like -beta.1)
+  if (!/^\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(version)) {
     console.error(`ERROR: Invalid version format: ${version}`)
     process.exit(1)
   }
 
-  // Ensure version starts with 'v'
-  if (!version.startsWith('v')) {
-    version = `v${version}`
+  // Validate tag format
+  if (!/^[a-z]+-v\d+\.\d+\.\d+(?:-[\w.]+)?$/.test(tag)) {
+    console.error(`ERROR: Invalid tag format: ${tag}`)
+    process.exit(1)
   }
 
   // Validate tap path
@@ -142,10 +152,10 @@ async function main() {
     process.exit(1)
   }
 
-  console.log(`Updating formula for version ${version}`)
+  console.log(`Updating formula for version ${version} (tag: ${tag})`)
 
-  const checksums = await downloadChecksums(version)
-  const formula = generateFormula(version, checksums)
+  const checksums = await downloadChecksums(tag)
+  const formula = generateFormula(version, tag, checksums)
 
   const formulaPath = join(tapPath, 'mcp-gateway.rb')
   await Bun.write(formulaPath, formula)
