@@ -268,9 +268,9 @@ Response Format:
         title: 'Get Tool',
         description: `Get detailed information about a specific tool including its input schema, output schema, and metadata.
 
-You MUST call this function before 'call_tool' to understand the required parameters. The inputSchema contains all required and optional fields with their types and descriptions.
+You MUST call this function before calling a tool to understand the required parameters. The inputSchema contains all required and optional fields with their types and descriptions.
 
-Workflow: search_tools → get_tool → call_tool
+Workflow: search_tools → get_tool → (use cliUsage via Bash)
 
 Response Format:
 - name: Full tool name (format: server__toolName)
@@ -278,7 +278,10 @@ Response Format:
 - requiredFields: Array of parameter names that MUST be provided
 - parameters: Array of all parameters with name, type, required flag, and description
 - inputSchema: Complete JSON Schema for validation
-- metadata: Server name and original tool name for reference`,
+- metadata: Server name and original tool name for reference
+- cliUsage: CLI command template for executing via Bash tool (enables permission checks)
+
+RECOMMENDED: Use the cliUsage command via Bash tool instead of call_tool for better permission handling and error messages.`,
         inputSchema: {
           name: z.string().describe('The name of the tool to retrieve (from search_tools results)'),
         },
@@ -359,76 +362,77 @@ Response Format:
     )
 
     // Call tool - executes a tool on its source MCP server
-    this.server.registerTool(
-      'call_tool',
-      {
-        title: 'Call Tool',
-        description: `Execute a tool with the provided arguments. Connects to the source MCP server and returns the execution result.
-
-You MUST call 'get_tool' first to obtain the exact input schema required to use this tool. The inputSchema from get_tool contains all required fields - missing required fields will cause errors.
-
-Workflow: search_tools → get_tool → call_tool
-
-Response Format:
-- On success: Returns the tool's output content (text, data, or binary)
-- On error: Returns error message with details about what went wrong
-
-Common Errors:
-- Missing required fields: Check get_tool response for requiredFields
-- Server not configured: The MCP server for this tool is not in your configuration
-- Authentication required: OAuth session expired or not configured`,
-        inputSchema: {
-          name: z.string().describe('The name of the tool to execute (from search_tools or get_tool)'),
-          arguments: z.record(z.string(), z.unknown()).optional().default({}).describe('Arguments matching the inputSchema from get_tool. Include ALL required fields.'),
-        },
-      },
-      async ({ name, arguments: args }) => {
-        // Use ToolExecutor for unified tool execution logic
-        const result = await this.toolExecutor.execute(name, args as Record<string, unknown>)
-
-        if (!result.success) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  error: result.message,
-                  ...(result.hint && { hint: result.hint }),
-                }),
-              },
-            ],
-            isError: true,
-          }
-        }
-
-        // Transform content blocks for MCP response
-        return {
-          content: result.result.content.map((c) => {
-            // Binary data (type='data') without text is converted to text representation
-            if (c.type === 'data' && c.data && !c.text) {
-              return {
-                type: 'text' as const,
-                text: `[Binary data: ${c.mimeType}]`,
-              }
-            }
-            // For image/audio/resource types with binary data, preserve them
-            if (c.type === 'image' && c.data && c.mimeType) {
-              return {
-                type: 'image' as const,
-                data: c.data,
-                mimeType: c.mimeType,
-              }
-            }
-            // Default: treat as text content
-            return {
-              type: 'text' as const,
-              text: c.text ?? '',
-            }
-          }),
-          isError: result.result.isError,
-        }
-      },
-    )
+    // Commented out: call_tool registration disabled
+    // this.server.registerTool(
+    //   'call_tool',
+    //   {
+    //     title: 'Call Tool',
+    //     description: `Execute a tool with the provided arguments. Connects to the source MCP server and returns the execution result.
+    //
+    // You MUST call 'get_tool' first to obtain the exact input schema required to use this tool. The inputSchema from get_tool contains all required fields - missing required fields will cause errors.
+    //
+    // Response Format:
+    // - On success: Returns the tool's output content (text, data, or binary)
+    // - On error: Returns error message with details about what went wrong
+    //
+    // Common Errors:
+    // - Missing required fields: Check get_tool response for requiredFields
+    // - Server not configured: The MCP server for this tool is not in your configuration
+    // - Authentication required: OAuth session expired or not configured
+    //
+    // IMPORTANT: For Claude Code users, prefer using the CLI command from 'get_tool' response (cliUsage field) via Bash tool instead of this call_tool. The CLI approach enables proper permission checks and better error handling.`,
+    //     inputSchema: {
+    //       name: z.string().describe('The name of the tool to execute (from search_tools or get_tool)'),
+    //       arguments: z.record(z.string(), z.unknown()).optional().default({}).describe('Arguments matching the inputSchema from get_tool. Include ALL required fields.'),
+    //     },
+    //   },
+    //   async ({ name, arguments: args }) => {
+    //     // Use ToolExecutor for unified tool execution logic
+    //     const result = await this.toolExecutor.execute(name, args as Record<string, unknown>)
+    //
+    //     if (!result.success) {
+    //       return {
+    //         content: [
+    //           {
+    //             type: 'text' as const,
+    //             text: JSON.stringify({
+    //               error: result.message,
+    //               ...(result.hint && { hint: result.hint }),
+    //             }),
+    //           },
+    //         ],
+    //         isError: true,
+    //       }
+    //     }
+    //
+    //     // Transform content blocks for MCP response
+    //     return {
+    //       content: result.result.content.map((c) => {
+    //         // Binary data (type='data') without text is converted to text representation
+    //         if (c.type === 'data' && c.data && !c.text) {
+    //           return {
+    //             type: 'text' as const,
+    //             text: `[Binary data: ${c.mimeType}]`,
+    //           }
+    //         }
+    //         // For image/audio/resource types with binary data, preserve them
+    //         if (c.type === 'image' && c.data && c.mimeType) {
+    //           return {
+    //             type: 'image' as const,
+    //             data: c.data,
+    //             mimeType: c.mimeType,
+    //           }
+    //         }
+    //         // Default: treat as text content
+    //         return {
+    //           type: 'text' as const,
+    //           text: c.text ?? '',
+    //         }
+    //       }),
+    //       isError: result.result.isError,
+    //     }
+    //   },
+    // )
   }
 
   /**
