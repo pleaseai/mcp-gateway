@@ -116,12 +116,20 @@ jobs:
             mcp-gateway
             homebrew-tap
 
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Checkout homebrew-tap repository
         uses: actions/checkout@v4
         with:
           repository: pleaseai/homebrew-tap
           token: ${{ steps.app-token.outputs.token }}
           path: homebrew-tap
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
 
       - name: Configure git
         run: |
@@ -132,83 +140,12 @@ jobs:
       - name: Update Formula
         run: |
           VERSION=${{ needs.release-please.outputs.mcp_tag_name }}
-          VERSION_NO_V=${VERSION#v}
 
-          # Download checksums (with -f to fail on HTTP errors)
-          curl -fsSL -o darwin-x64.sha256 \
-            "https://github.com/${{ github.repository }}/releases/download/${VERSION}/mcp-gateway-darwin-x64.sha256"
-          curl -fsSL -o darwin-arm64.sha256 \
-            "https://github.com/${{ github.repository }}/releases/download/${VERSION}/mcp-gateway-darwin-arm64.sha256"
-          curl -fsSL -o linux-x64.sha256 \
-            "https://github.com/${{ github.repository }}/releases/download/${VERSION}/mcp-gateway-linux-x64.sha256"
-          curl -fsSL -o linux-arm64.sha256 \
-            "https://github.com/${{ github.repository }}/releases/download/${VERSION}/mcp-gateway-linux-arm64.sha256"
-
-          # Extract checksums
-          DARWIN_X64_SHA256=$(cat darwin-x64.sha256 | awk '{print $1}')
-          DARWIN_ARM64_SHA256=$(cat darwin-arm64.sha256 | awk '{print $1}')
-          LINUX_X64_SHA256=$(cat linux-x64.sha256 | awk '{print $1}')
-          LINUX_ARM64_SHA256=$(cat linux-arm64.sha256 | awk '{print $1}')
-
-          # Create or update Formula
-          cd homebrew-tap
-          cat > mcp-gateway.rb << 'FORMULA_EOF'
-class McpGateway < Formula
-  desc "MCP server and CLI for searching tools using regex, BM25, or semantic search"
-  homepage "https://github.com/pleaseai/mcp-gateway"
-  version "VERSION_PLACEHOLDER"
-  license "MIT"
-
-  on_macos do
-    if Hardware::CPU.arm?
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/vVERSION_PLACEHOLDER/mcp-gateway-darwin-arm64"
-      sha256 "SHA256_DARWIN_ARM64_PLACEHOLDER"
-    else
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/vVERSION_PLACEHOLDER/mcp-gateway-darwin-x64"
-      sha256 "SHA256_DARWIN_X64_PLACEHOLDER"
-    end
-  end
-
-  on_linux do
-    if Hardware::CPU.arm?
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/vVERSION_PLACEHOLDER/mcp-gateway-linux-arm64"
-      sha256 "SHA256_LINUX_ARM64_PLACEHOLDER"
-    else
-      url "https://github.com/pleaseai/mcp-gateway/releases/download/vVERSION_PLACEHOLDER/mcp-gateway-linux-x64"
-      sha256 "SHA256_LINUX_X64_PLACEHOLDER"
-    end
-  end
-
-  def install
-    if OS.mac?
-      if Hardware::CPU.arm?
-        bin.install "mcp-gateway-darwin-arm64" => "mcp-gateway"
-      else
-        bin.install "mcp-gateway-darwin-x64" => "mcp-gateway"
-      end
-    else
-      if Hardware::CPU.arm?
-        bin.install "mcp-gateway-linux-arm64" => "mcp-gateway"
-      else
-        bin.install "mcp-gateway-linux-x64" => "mcp-gateway"
-      end
-    end
-  end
-
-  test do
-    assert_match version.to_s, shell_output("#{bin}/mcp-gateway --version")
-  end
-end
-FORMULA_EOF
-
-          # Replace placeholders
-          sed -i "s/VERSION_PLACEHOLDER/${VERSION_NO_V}/g" mcp-gateway.rb
-          sed -i "s/SHA256_DARWIN_X64_PLACEHOLDER/${DARWIN_X64_SHA256}/" mcp-gateway.rb
-          sed -i "s/SHA256_DARWIN_ARM64_PLACEHOLDER/${DARWIN_ARM64_SHA256}/" mcp-gateway.rb
-          sed -i "s/SHA256_LINUX_X64_PLACEHOLDER/${LINUX_X64_SHA256}/" mcp-gateway.rb
-          sed -i "s/SHA256_LINUX_ARM64_PLACEHOLDER/${LINUX_ARM64_SHA256}/" mcp-gateway.rb
+          # Run update script
+          bun scripts/update-formula.ts "$VERSION" homebrew-tap
 
           # Check if there are changes
+          cd homebrew-tap
           if git diff --quiet mcp-gateway.rb 2>/dev/null; then
             echo "No changes to Formula"
             exit 0
