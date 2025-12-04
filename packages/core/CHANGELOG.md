@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5-beta.1](https://github.com/pleaseai/mcp-gateway/compare/core-v0.1.4-beta.1...core-v0.1.5-beta.1) (2025-12-04)
+
+
+### Features
+
+* **core:** implement hybrid search with RRF fusion ([#29](https://github.com/pleaseai/mcp-gateway/issues/29)) ([3f676fd](https://github.com/pleaseai/mcp-gateway/commit/3f676fd7ac6e396058eda50cc4956b1563264936))
+
 ## [0.1.4-beta.1](https://github.com/pleaseai/mcp-gateway/compare/core-v0.1.3-beta.1...core-v0.1.4-beta.1) (2025-12-04)
 
 
