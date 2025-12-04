@@ -41,7 +41,78 @@ function parseArgs(argsString: string): Record<string, unknown> {
 }
 
 /**
- * Create the call command
+ * Execute a tool directly without the 'call' subcommand
+ * This enables permission-based tool execution patterns like:
+ *   mcp-gateway asana__get_tasks --args '{}'
+ *
+ * @param toolName - Tool name in format server__toolName
+ * @param argv - Remaining arguments (--args, --format, etc.)
+ *
+ * @example
+ * // Direct execution for permission-checkable calls
+ * mcp-gateway github__get_issue --args '{"owner":"org","repo":"repo","issue_number":123}'
+ *
+ * // Permission pattern in settings: "Bash(mcp-gateway github__*:*)"
+ */
+export function executeToolDirect(toolName: string, argv: string[]): void {
+  // Parse options manually
+  let args: Record<string, unknown> = {}
+  let indexPath = DEFAULT_INDEX_PATH
+  let format: CallOutputFormat = 'json'
+
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]
+    if ((arg === '-a' || arg === '--args') && argv[i + 1]) {
+      args = parseArgs(argv[++i])
+    }
+    else if ((arg === '-i' || arg === '--index') && argv[i + 1]) {
+      indexPath = argv[++i]
+    }
+    else if ((arg === '-f' || arg === '--format') && argv[i + 1]) {
+      format = argv[++i] as CallOutputFormat
+    }
+  }
+
+  // Execute tool
+  executeCall(toolName, args, indexPath, format)
+}
+
+/**
+ * Core tool execution logic shared by both call command and direct execution
+ */
+async function executeCall(
+  toolName: string,
+  args: Record<string, unknown>,
+  indexPath: string,
+  format: CallOutputFormat,
+): Promise<void> {
+  try {
+    const indexManager = new IndexManager()
+    const executor = createToolExecutor({
+      getIndex: () => indexManager.loadIndex(indexPath),
+    })
+
+    const result = await executor.execute(toolName, args)
+
+    if (result.success) {
+      console.log(formatCallResult(result, format))
+      if (result.result.isError) {
+        process.exit(1)
+      }
+    }
+    else {
+      error(formatCallError(result, format))
+      process.exit(1)
+    }
+  }
+  catch (err) {
+    error(err instanceof Error ? err.message : String(err))
+    process.exit(1)
+  }
+}
+
+/**
+ * Create the call command (legacy, kept for backward compatibility)
  *
  * @example
  * // Using --args flag
@@ -54,60 +125,34 @@ function parseArgs(argsString: string): Record<string, unknown> {
  * @example
  * // With different output format
  * mcp-gateway call "tool_name" --args '{}' --format minimal
+ *
+ * @example
+ * // Preferred: Direct tool execution (enables permission-based patterns)
+ * mcp-gateway github__get_issue --args '{"owner":"org","repo":"repo","issue_number":123}'
  */
 export function createCallCommand(): Command {
   const cmd = new Command('call')
-    .description('Call a tool on an MCP server')
+    .description('Call a tool on an MCP server (prefer direct execution: mcp-gateway tool_name --args)')
     .argument('<tool_name>', 'Tool name (format: server__toolName)')
     .option('-a, --args <json>', 'Tool arguments as JSON string')
     .option('-i, --index <path>', 'Path to index file', DEFAULT_INDEX_PATH)
     .addOption(new Option('-f, --format <format>', 'Output format: json | minimal').choices(['json', 'minimal']).default('json'))
     .action(async (toolName: string, options) => {
-      try {
-        // Parse arguments from --args flag or stdin
-        let args: Record<string, unknown> = {}
+      // Parse arguments from --args flag or stdin
+      let args: Record<string, unknown> = {}
 
-        if (options.args) {
-          args = parseArgs(options.args)
-        }
-        else if (!process.stdin.isTTY) {
-          // Read from stdin if not a TTY (i.e., data is being piped)
-          const stdinData = await readStdin()
-          if (stdinData.trim()) {
-            args = parseArgs(stdinData)
-          }
-        }
-
-        const format = options.format as CallOutputFormat
-
-        // Create tool executor with index loading
-        const indexManager = new IndexManager()
-        const executor = createToolExecutor({
-          getIndex: () => indexManager.loadIndex(options.index),
-        })
-
-        // Execute tool
-        const result = await executor.execute(toolName, args)
-
-        // Output result
-        if (result.success) {
-          console.log(formatCallResult(result, format))
-
-          // Exit with error code if tool returned isError
-          if (result.result.isError) {
-            process.exit(1)
-          }
-        }
-        else {
-          // Output error to stderr and exit with error code
-          error(formatCallError(result, format))
-          process.exit(1)
+      if (options.args) {
+        args = parseArgs(options.args)
+      }
+      else if (!process.stdin.isTTY) {
+        // Read from stdin if not a TTY (i.e., data is being piped)
+        const stdinData = await readStdin()
+        if (stdinData.trim()) {
+          args = parseArgs(stdinData)
         }
       }
-      catch (err) {
-        error(err instanceof Error ? err.message : String(err))
-        process.exit(1)
-      }
+
+      await executeCall(toolName, args, options.index, options.format as CallOutputFormat)
     })
 
   return cmd

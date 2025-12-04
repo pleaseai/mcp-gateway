@@ -46,7 +46,7 @@ function buildExampleArgs(tool: ToolDefinition): Record<string, string> {
  *
  * @example
  * // For a tool with required fields: path (string), content (string)
- * // Returns: 'npx @pleaseai/mcp-gateway call "server__tool" --args \'{"path": "<string>", "content": "<string>"}\''
+ * // Returns: 'npx @pleaseai/mcp-gateway server__tool --args \'{"path": "<string>", "content": "<string>"}\''
  */
 export function generateCliUsage(tool: ToolDefinition): string {
   const exampleArgs = buildExampleArgs(tool)
@@ -56,7 +56,8 @@ export function generateCliUsage(tool: ToolDefinition): string {
     ? JSON.stringify(exampleArgs)
     : '{}'
 
-  return `npx @pleaseai/mcp-gateway call "${tool.name}" --args '${argsJson}'`
+  // Direct tool execution format enables permission patterns like: Bash(mcp-gateway server__*:*)
+  return `npx @pleaseai/mcp-gateway ${tool.name} --args '${argsJson}'`
 }
 
 /**
@@ -106,7 +107,7 @@ export function generateDetailedCliUsage(tool: ToolDefinition): {
     ? JSON.stringify(exampleArgs, null, 2)
     : '{}'
 
-  const stdinExample = `echo '${argsJson}' | npx @pleaseai/mcp-gateway call "${tool.name}"`
+  const stdinExample = `echo '${argsJson}' | npx @pleaseai/mcp-gateway ${tool.name}`
 
   return { argsExample, stdinExample }
 }
