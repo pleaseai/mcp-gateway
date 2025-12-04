@@ -58,6 +58,13 @@ brew install pleaseai/tap/mcp-gateway
 curl -fsSL https://raw.githubusercontent.com/pleaseai/mcp-gateway/main/install.sh | bash
 ```
 
+> **Security Note**: Piping `curl` to `bash` executes remote code without inspection. For added security, you can download and inspect the script first:
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/pleaseai/mcp-gateway/main/install.sh -o install.sh
+> # ... inspect install.sh ...
+> bash install.sh
+> ```
+
 ### npm/npx
 
 ```bash

@@ -4,9 +4,9 @@
  * Build release binaries for all platforms using Bun's compile feature.
  *
  * Usage:
- *   bun scripts/build-release.ts [version]
+ *   bun scripts/build-release.ts
  *
- * If version is not provided, it will be read from packages/mcp/package.json
+ * The version is read from packages/mcp/package.json
  */
 
 import { mkdir, rm } from 'node:fs/promises'

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -99,10 +99,10 @@ main() {
 
     # Download binary to temporary location
     TEMP_FILE=$(mktemp)
+    trap 'rm -f "$TEMP_FILE"' EXIT
     if ! curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_FILE"; then
         print_error "Failed to download binary"
         print_info "Please check your internet connection and try again"
-        rm -f "$TEMP_FILE"
         exit 1
     fi
 
@@ -119,14 +119,12 @@ main() {
     if [ -w "$INSTALL_DIR" ]; then
         if ! mv "$TEMP_FILE" "$INSTALL_DIR/$BINARY_NAME"; then
             print_error "Failed to install binary to $INSTALL_DIR"
-            rm -f "$TEMP_FILE"
             exit 1
         fi
     else
         print_info "Administrator privileges required for installation"
         if ! sudo mv "$TEMP_FILE" "$INSTALL_DIR/$BINARY_NAME"; then
             print_error "Failed to install binary"
-            rm -f "$TEMP_FILE"
             exit 1
         fi
     fi
