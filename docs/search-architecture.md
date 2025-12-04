@@ -4,28 +4,30 @@ This document explains how MCP Gateway's search engine works internally.
 
 ## Overview
 
-MCP Gateway provides three search strategies that operate **without external databases**:
+MCP Gateway provides four search strategies that operate **without external databases**:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      Search Orchestrator                        │
-│                                                                 │
-│  ┌─────────────┐   ┌─────────────┐   ┌─────────────────────┐   │
-│  │    Regex    │   │    BM25     │   │     Embedding       │   │
-│  │   Strategy  │   │   Strategy  │   │      Strategy       │   │
-│  └─────────────┘   └─────────────┘   └─────────────────────┘   │
-│                                                │                │
-│                                       ┌────────┴────────┐       │
-│                                       │    Embedding    │       │
-│                                       │    Provider     │       │
-│                                       └─────────────────┘       │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-              ┌───────────────────────────────┐
-              │     Index (JSON file)         │
-              │  .please/mcp/index.json       │
-              └───────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────┐
+│                          Search Orchestrator                               │
+│                                                                            │
+│  ┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌──────────────┐   │
+│  │    Regex    │   │    BM25     │   │  Embedding  │   │    Hybrid    │   │
+│  │   Strategy  │   │   Strategy  │   │   Strategy  │   │   Strategy   │   │
+│  └─────────────┘   └─────────────┘   └──────┬──────┘   └───────┬──────┘   │
+│                                             │                   │          │
+│                                    ┌────────┴───────────────────┘          │
+│                                    │                                       │
+│                           ┌────────┴────────┐                              │
+│                           │    Embedding    │                              │
+│                           │    Provider     │                              │
+│                           └─────────────────┘                              │
+└───────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                    ┌───────────────────────────────┐
+                    │     Index (JSON file)         │
+                    │  .please/mcp/index.json       │
+                    └───────────────────────────────┘
 ```
 
 ## Search Modes
@@ -133,6 +135,76 @@ Returns a value between -1 and 1, normalized to 0-1 for scoring.
 
 **Complexity:** O(n × d) where n = tools, d = embedding dimensions
 
+### 4. Hybrid Search
+
+Combines BM25 (lexical) and Embedding (semantic) search using Reciprocal Rank Fusion (RRF).
+
+**How it works:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Hybrid Search Strategy                       │
+│                                                                  │
+│  Query: "find files"                                            │
+│         │                                                        │
+│         ├──────────────────────┬─────────────────────────┐      │
+│         ▼                      ▼                         │      │
+│  ┌─────────────┐        ┌─────────────┐                  │      │
+│  │    BM25     │        │  Embedding  │     Promise.all  │      │
+│  │   Search    │        │   Search    │     (parallel)   │      │
+│  └──────┬──────┘        └──────┬──────┘                  │      │
+│         │                      │                         │      │
+│         │  Rank: 1,2,3...      │  Rank: 1,2,3...        │      │
+│         │                      │                         │      │
+│         └──────────┬───────────┘                         │      │
+│                    ▼                                     │      │
+│         ┌─────────────────────┐                          │      │
+│         │  Reciprocal Rank    │                          │      │
+│         │  Fusion (RRF)       │                          │      │
+│         │  k = 60             │                          │      │
+│         └──────────┬──────────┘                          │      │
+│                    │                                     │      │
+│                    ▼                                     │      │
+│         ┌─────────────────────┐                          │      │
+│         │ Normalized Scores   │                          │      │
+│         │ (0-1 range)         │                          │      │
+│         └─────────────────────┘                          │      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+1. **Parallel Execution:**
+   - Both BM25 and Embedding searches run simultaneously via `Promise.all()`
+   - Each strategy returns 3x the requested `topK` for better fusion coverage
+
+2. **Reciprocal Rank Fusion (RRF):**
+   - Combines rankings from both strategies
+   - Formula: `RRF_score(d) = Σ 1/(k + rank_i(d))` where k=60 (standard value)
+   - Items appearing in both result sets get boosted scores
+
+3. **Score Normalization:**
+   - Final scores normalized to 0-1 range
+   - Results sorted by combined score
+
+**RRF Formula:**
+```
+RRF_score(d) = 1/(k + rank_bm25(d)) + 1/(k + rank_embedding(d))
+```
+
+Where:
+- k = 60 (constant to prevent high scores for top-ranked items)
+- rank is 1-based (first result has rank 1)
+
+**Best for:**
+- Combining keyword precision with semantic understanding
+- Queries that benefit from both exact matches and meaning
+- When you want the best of both BM25 and embedding search
+
+**Requirements:**
+- Index must contain embeddings (fails fast with clear error if missing)
+- Embedding provider must be configured
+
+**Complexity:** O(n × q) + O(n × d) where n = tools, q = query tokens, d = embedding dimensions
+
 ## Why No Vector Database?
 
 MCP Gateway intentionally uses **in-memory linear search** instead of a vector database:
@@ -209,13 +281,13 @@ Embedding generation is the primary bottleneck during indexing.
 
 ### Search Performance
 
-| Tools | Regex | BM25 | Embedding |
-|-------|-------|------|-----------|
-| 100 | <1ms | <1ms | ~5ms |
-| 1,000 | ~5ms | ~10ms | ~50ms |
-| 10,000 | ~50ms | ~100ms | ~500ms |
+| Tools | Regex | BM25 | Embedding | Hybrid |
+|-------|-------|------|-----------|--------|
+| 100 | <1ms | <1ms | ~5ms | ~10ms |
+| 1,000 | ~5ms | ~10ms | ~50ms | ~60ms |
+| 10,000 | ~50ms | ~100ms | ~500ms | ~600ms |
 
-Times include model inference for embedding mode.
+Times include model inference for embedding and hybrid modes. Hybrid latency is approximately max(BM25, Embedding) due to parallel execution.
 
 ## Architecture Components
 
@@ -265,9 +337,11 @@ interface EmbeddingProvider {
 |----------|------------------|
 | Know the exact tool name | `regex` |
 | Keyword search | `bm25` |
-| Natural language query | `embedding` |
+| Natural language query | `embedding` or `hybrid` |
 | Fastest results | `bm25` |
 | Most accurate semantic match | `embedding` |
+| Best overall accuracy | `hybrid` |
+| Combining exact + semantic | `hybrid` |
 
 ### Index Optimization
 
@@ -293,5 +367,5 @@ interface EmbeddingProvider {
 For large-scale deployments (>100K tools), consider:
 
 - **Vector databases**: Qdrant, Milvus, Pinecone for ANN search
-- **Hybrid search**: Combine BM25 pre-filtering with embedding re-ranking
 - **Streaming indexes**: Process tools without loading all into memory
+- **Distributed search**: Shard indexes across multiple nodes
