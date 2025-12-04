@@ -12,12 +12,12 @@ Models ranked by BEIR score for models ≤100M parameters:
 
 | Model | Parameters | Dimensions | BEIR Score | MRL Support |
 |-------|------------|------------|------------|-------------|
-| **mdbr-leaf-ir (asymmetric)** | 23M | 256-768 | **54.03** | Yes |
-| **mdbr-leaf-ir** | 23M | 256-768 | **53.55** | Yes |
+| **mdbr-leaf-ir (asymmetric)** | 22.6M | 256-768 | **54.03** | Yes |
+| **mdbr-leaf-ir** | 22.6M | 256-768 | **53.55** | Yes |
 | snowflake-arctic-embed-s | 32M | 384 | 51.98 | No |
 | bge-small-en-v1.5 | 33M | 384 | 51.65 | No |
-| snowflake-arctic-embed-xs | 23M | 384 | 50.15 | No |
-| all-MiniLM-L6-v2 | 23M | 384 | 41.95 | No |
+| snowflake-arctic-embed-xs | 22M | 384 | 50.15 | No |
+| all-MiniLM-L6-v2 | 22M | 384 | 41.95 | No |
 
 > **Note**: mdbr-leaf-ir ranks #1 on the BEIR public leaderboard for models with ≤100M parameters.
 
@@ -78,19 +78,21 @@ Key features:
 
 ## Memory Requirements
 
-| Model | FP32 | FP16 | INT8 (q8) |
-|-------|------|------|-----------|
-| mdbr-leaf-ir | ~90MB | ~45MB | ~23MB |
-| all-MiniLM-L6-v2 | ~90MB | ~45MB | ~23MB |
-| bge-small-en-v1.5 | ~130MB | ~65MB | ~33MB |
-| nomic-embed-text-v1.5 | ~550MB | ~275MB | ~140MB |
+| Model | FP32 |
+|-------|------|
+| mdbr-leaf-ir | ~90MB |
+| all-MiniLM-L6-v2 | ~90MB |
+| bge-small-en-v1.5 | ~130MB |
+| snowflake-arctic-embed-xs | ~90MB |
+
+> **Note**: The current implementation uses FP32 precision. FP16 and INT8 quantization may be supported in future versions.
 
 ## Recommendation
 
 For local deployment with transformers.js:
 
 1. **Best Performance**: Use `mdbr-leaf-ir` with MRL truncation (256 dims recommended)
-2. **Smallest Footprint**: Use `mdbr-leaf-ir` with INT8 quantization and 128 dims
+2. **Smallest Footprint**: Use `mdbr-leaf-ir` with 128 dims for reduced memory usage
 3. **Legacy Compatibility**: Keep `all-MiniLM-L6-v2` for existing indexes
 
 ## Configuration Example
@@ -98,18 +100,19 @@ For local deployment with transformers.js:
 ```typescript
 import { MDBRLeafEmbeddingProvider } from '@pleaseai/mcp-core'
 
-// Recommended: 256 dimensions with FP32
-const provider = new MDBRLeafEmbeddingProvider(
+// Default: 256 dimensions (recommended)
+const provider = new MDBRLeafEmbeddingProvider()
+
+// Custom model with specific dimensions
+const customProvider = new MDBRLeafEmbeddingProvider(
   'MongoDB/mdbr-leaf-ir',
-  256,  // dimensions (MRL truncation)
-  'fp32' // dtype
+  256  // dimensions (MRL truncation)
 )
 
-// Compact: 128 dimensions with INT8
+// Compact: 128 dimensions for smaller footprint
 const compactProvider = new MDBRLeafEmbeddingProvider(
   'MongoDB/mdbr-leaf-ir',
-  128,
-  'q8'
+  128
 )
 ```
 
