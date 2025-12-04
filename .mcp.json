@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "pleaseai-mcp": {
+    "mcp-gateway": {
       "command": "node",
       "args": [
         "packages/mcp/dist/cli.js",
