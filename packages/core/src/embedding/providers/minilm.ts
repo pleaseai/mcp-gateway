@@ -32,9 +32,18 @@ export class MiniLMEmbeddingProvider implements EmbeddingProvider {
     // Dynamic import for transformers.js
     const { pipeline } = await import('@huggingface/transformers')
 
-    this.extractor = await pipeline('feature-extraction', this.modelName, {
-      dtype: this.dtype,
-    })
+    try {
+      this.extractor = await pipeline('feature-extraction', this.modelName, {
+        dtype: this.dtype,
+      })
+    }
+    catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(
+        `Failed to initialize embedding model "${this.modelName}" with dtype "${this.dtype}": ${message}. `
+        + `Try using dtype "fp32" as a fallback.`,
+      )
+    }
   }
 
   async embed(text: string): Promise<number[]> {

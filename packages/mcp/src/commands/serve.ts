@@ -33,12 +33,25 @@ export function createServeCommand(): Command {
       const spinner = ora('Starting MCP server...').start()
 
       try {
+        // Validate dtype option
+        const VALID_DTYPES = ['fp32', 'fp16', 'q8', 'q4', 'q4f16'] as const
+        if (!VALID_DTYPES.includes(options.dtype)) {
+          spinner.fail(`Invalid dtype: "${options.dtype}"`)
+          error(`Valid options: ${VALID_DTYPES.join(', ')}`)
+          process.exit(1)
+        }
+
         const transport = options.transport as 'stdio' | 'http'
         const port = Number.parseInt(options.port, 10)
         const defaultMode = options.mode as SearchMode
         const providerType = options.provider as EmbeddingProviderType
         const dtype = options.dtype as ModelDtype
         const indexPath = options.index as string
+
+        // Warn if dtype is specified with API providers
+        if (providerType.startsWith('api:') && dtype !== 'fp32') {
+          warn(`dtype "${dtype}" is ignored for API providers (only applies to local providers)`)
+        }
 
         // Check if index exists, if not create it automatically
         if (!fs.existsSync(indexPath)) {

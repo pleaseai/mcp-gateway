@@ -37,6 +37,15 @@ export function createIndexCommand(): Command {
       const spinner = ora('Loading tools...').start()
 
       try {
+        // Validate dtype option
+        const VALID_DTYPES = ['fp32', 'fp16', 'q8', 'q4', 'q4f16'] as const
+        if (!VALID_DTYPES.includes(options.dtype)) {
+          spinner.fail(`Invalid dtype: "${options.dtype}"`)
+          error(`Valid options: ${VALID_DTYPES.join(', ')}`)
+          process.exit(1)
+        }
+        const dtype = options.dtype as ModelDtype
+
         // Create index manager
         const indexManager = new IndexManager()
         const indexBuilder = new IndexBuilder()
@@ -44,7 +53,11 @@ export function createIndexCommand(): Command {
         // Setup embedding provider if needed
         if (options.embeddings) {
           const providerType = options.provider as EmbeddingProviderType
-          const dtype = options.dtype as ModelDtype
+
+          // Warn if dtype is specified with API providers
+          if (providerType.startsWith('api:') && dtype !== 'fp32') {
+            warn(`dtype "${dtype}" is ignored for API providers (only applies to local providers)`)
+          }
 
           spinner.text = `Initializing ${providerType} embedding provider...`
 
@@ -57,7 +70,8 @@ export function createIndexCommand(): Command {
           await provider.initialize()
           indexManager.setEmbeddingProvider(provider)
 
-          info(`Using ${providerType} embeddings (${provider.dimensions} dimensions)`)
+          const dtypeInfo = providerType.startsWith('local:') ? `, dtype: ${dtype}` : ''
+          info(`Using ${providerType} embeddings (${provider.dimensions} dimensions${dtypeInfo})`)
         }
 
         // Check if index exists
