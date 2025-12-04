@@ -19,6 +19,7 @@ jobs:
       core_tag_name: ${{ steps.release.outputs['packages/core--tag_name'] }}
       mcp_release_created: ${{ steps.release.outputs['packages/mcp--release_created'] }}
       mcp_tag_name: ${{ steps.release.outputs['packages/mcp--tag_name'] }}
+      mcp_version: ${{ steps.release.outputs['packages/mcp--version'] }}
 
     steps:
       - uses: actions/create-github-app-token@v2
@@ -142,10 +143,11 @@ jobs:
 
       - name: Update Formula
         run: |
-          VERSION=${{ needs.release-please.outputs.mcp_tag_name }}
+          VERSION=${{ needs.release-please.outputs.mcp_version }}
+          TAG=${{ needs.release-please.outputs.mcp_tag_name }}
 
-          # Run update script
-          bun scripts/update-formula.ts "$VERSION" homebrew-tap
+          # Run update script (pass version for validation, tag for download URLs)
+          bun scripts/update-formula.ts "$VERSION" "$TAG" homebrew-tap
 
           # Check if there are changes
           cd homebrew-tap
@@ -156,7 +158,7 @@ jobs:
 
           # Commit and push
           git add mcp-gateway.rb
-          git commit -m "chore: update mcp-gateway to ${VERSION}"
+          git commit -m "chore: update mcp-gateway to v${VERSION}"
           git push origin main
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
