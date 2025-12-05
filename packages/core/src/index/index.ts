@@ -1,13 +1,13 @@
 import type { EmbeddingProvider } from '../embedding/provider.js'
 import type { IndexedTool } from '../types/index.js'
-import type { PersistedIndex } from './storage.js'
+import type { BuildMetadata, PersistedIndex } from './storage.js'
 import { IndexBuilder } from './builder.js'
 import { ToolLoader } from './loader.js'
 import { IndexStorage } from './storage.js'
 
 export { IndexBuilder } from './builder.js'
 export { ToolLoader } from './loader.js'
-export { type BM25Stats, IndexStorage, type PersistedIndex } from './storage.js'
+export { type BM25Stats, type BuildMetadata, type ConfigFingerprint, IndexStorage, type PersistedIndex } from './storage.js'
 
 /**
  * Index manager options
@@ -107,13 +107,16 @@ export class IndexManager {
   /**
    * Save index to file
    */
-  async saveIndex(indexedTools: IndexedTool[], outputPath: string): Promise<void> {
-    const options = this.embeddingProvider
-      ? {
-          embeddingModel: this.embeddingProvider.name,
-          embeddingDimensions: this.embeddingProvider.dimensions,
-        }
-      : undefined
+  async saveIndex(
+    indexedTools: IndexedTool[],
+    outputPath: string,
+    saveOptions?: { buildMetadata?: BuildMetadata },
+  ): Promise<void> {
+    const options = {
+      embeddingModel: this.embeddingProvider?.name,
+      embeddingDimensions: this.embeddingProvider?.dimensions,
+      buildMetadata: saveOptions?.buildMetadata,
+    }
 
     await this.storage.save(indexedTools, outputPath, options)
 

@@ -1,11 +1,12 @@
 import type { EmbeddingProviderType, ModelDtype, SearchMode } from '@pleaseai/mcp-core'
-import fs from 'node:fs'
 import process from 'node:process'
 import { createEmbeddingProvider, IndexBuilder, IndexManager } from '@pleaseai/mcp-core'
 import { Command } from 'commander'
 import ora from 'ora'
 import { DEFAULT_EMBEDDING_PROVIDER, DEFAULT_INDEX_PATH, DEFAULT_SEARCH_MODE } from '../constants.js'
 import { McpToolSearchServer } from '../server.js'
+import { createAllConfigFingerprints, getCliVersion } from '../utils/config-fingerprint.js'
+import { checkIndexRegeneration } from '../utils/index-regeneration.js'
 import { getAllMcpServers, loadToolsFromMcpServers } from '../utils/mcp-config-loader.js'
 import { error, info, warn } from '../utils/output.js'
 
@@ -53,9 +54,17 @@ export function createServeCommand(): Command {
           warn(`dtype "${dtype}" is ignored for API providers (only applies to local providers)`)
         }
 
-        // Check if index exists, if not create it automatically
-        if (!fs.existsSync(indexPath)) {
-          spinner.text = 'Index not found, creating from MCP servers...'
+        // Check if index needs regeneration
+        const { needsRebuild, reasons } = await checkIndexRegeneration(
+          indexPath,
+          { mode: defaultMode, provider: providerType, dtype },
+        )
+
+        if (needsRebuild) {
+          spinner.text = 'Index regeneration needed...'
+          for (const reason of reasons) {
+            info(`  - ${reason}`)
+          }
 
           const allServers = getAllMcpServers()
 
@@ -117,8 +126,14 @@ export function createServeCommand(): Command {
             })
           }
 
-          // Save index
-          await indexManager.saveIndex(indexedTools, indexPath)
+          // Save index with build metadata for future regeneration detection
+          await indexManager.saveIndex(indexedTools, indexPath, {
+            buildMetadata: {
+              cliVersion: getCliVersion(),
+              cliArgs: { mode: defaultMode, provider: providerType, dtype },
+              configFingerprints: createAllConfigFingerprints(),
+            },
+          })
           info(`Auto-indexed ${indexedTools.length} tools`)
         }
 

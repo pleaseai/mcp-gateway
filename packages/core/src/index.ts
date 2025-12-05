@@ -13,7 +13,7 @@ export type { EmbeddingProvider } from './embedding/provider.js'
 // Index management
 export { IndexBuilder, IndexManager, IndexStorage, ToolLoader } from './index/index.js'
 
-export type { BM25Stats, PersistedIndex } from './index/storage.js'
+export type { BM25Stats, BuildMetadata, ConfigFingerprint, PersistedIndex } from './index/storage.js'
 // Search
 export {
   BM25SearchStrategy,

@@ -3,6 +3,32 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 /**
+ * Configuration file fingerprint for change detection.
+ * Used to detect when config files have been added, removed, or modified.
+ */
+export type ConfigFingerprint
+  = | { exists: false }
+    | { exists: true, hash: string }
+
+/**
+ * Build metadata for index regeneration detection
+ */
+export interface BuildMetadata {
+  cliVersion: string
+  cliArgs: {
+    mode?: string
+    provider?: string
+    dtype?: string
+    exclude?: string[]
+  }
+  configFingerprints: {
+    local?: ConfigFingerprint
+    project?: ConfigFingerprint
+    user?: ConfigFingerprint
+  }
+}
+
+/**
  * Persisted index format
  */
 export interface PersistedIndex {
@@ -15,6 +41,7 @@ export interface PersistedIndex {
   embeddingDimensions?: number
   bm25Stats: BM25Stats
   tools: IndexedTool[]
+  buildMetadata?: BuildMetadata
 }
 
 /**
@@ -41,6 +68,7 @@ export class IndexStorage {
     options?: {
       embeddingModel?: string
       embeddingDimensions?: number
+      buildMetadata?: BuildMetadata
     },
   ): Promise<void> {
     const bm25Stats = this.computeBM25Stats(indexedTools)
@@ -56,6 +84,7 @@ export class IndexStorage {
       embeddingDimensions: options?.embeddingDimensions,
       bm25Stats,
       tools: indexedTools,
+      buildMetadata: options?.buildMetadata,
     }
 
     // Ensure directory exists
