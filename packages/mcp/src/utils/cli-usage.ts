@@ -57,7 +57,7 @@ export function generateCliUsage(tool: ToolDefinition): string {
     : '{}'
 
   // Direct tool execution format enables permission patterns like: Bash(mcp-gateway server__*:*)
-  return `npx @pleaseai/mcp-gateway ${tool.name} --args '${argsJson}'`
+  return `npx @pleaseai/mcp-gateway@beta ${tool.name} --args '${argsJson}'`
 }
 
 /**
@@ -107,7 +107,7 @@ export function generateDetailedCliUsage(tool: ToolDefinition): {
     ? JSON.stringify(exampleArgs, null, 2)
     : '{}'
 
-  const stdinExample = `echo '${argsJson}' | npx @pleaseai/mcp-gateway ${tool.name}`
+  const stdinExample = `echo '${argsJson}' | npx @pleaseai/mcp-gateway@beta ${tool.name}`
 
   return { argsExample, stdinExample }
 }
