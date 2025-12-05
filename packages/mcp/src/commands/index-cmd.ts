@@ -8,6 +8,7 @@ import {
 import { Command } from 'commander'
 import ora from 'ora'
 import { DEFAULT_EMBEDDING_PROVIDER, DEFAULT_INDEX_PATH } from '../constants.js'
+import { createAllConfigFingerprints, getCliVersion } from '../utils/config-fingerprint.js'
 import { getAllMcpServers, loadToolsFromMcpServers } from '../utils/mcp-config-loader.js'
 import { error, info, success, warn } from '../utils/output.js'
 
@@ -84,6 +85,7 @@ export function createIndexCommand(): Command {
         }
 
         let tools: ToolDefinition[] = []
+        const exclude = options.exclude ? options.exclude.split(',').map((s: string) => s.trim()) : undefined
 
         // If no sources provided, load from MCP servers
         if (!sources || sources.length === 0) {
@@ -95,8 +97,6 @@ export function createIndexCommand(): Command {
           }
 
           spinner.text = `Loading tools from ${allServers.size} MCP server(s)...`
-
-          const exclude = options.exclude ? options.exclude.split(',').map((s: string) => s.trim()) : undefined
 
           tools = await loadToolsFromMcpServers({
             exclude,
@@ -141,7 +141,14 @@ export function createIndexCommand(): Command {
 
           // Save index and exit (file-based flow)
           spinner.text = 'Saving index...'
-          await indexManager.saveIndex(indexedTools, options.output)
+          const providerType = options.provider as EmbeddingProviderType
+          await indexManager.saveIndex(indexedTools, options.output, {
+            buildMetadata: {
+              cliVersion: getCliVersion(),
+              cliArgs: { provider: providerType, dtype, exclude },
+              configFingerprints: createAllConfigFingerprints(),
+            },
+          })
 
           spinner.succeed(`Indexed ${indexedTools.length} tools`)
           success(`Index saved to ${options.output}`)
@@ -168,9 +175,16 @@ export function createIndexCommand(): Command {
           })
         }
 
-        // Save index
+        // Save index with build metadata
         spinner.text = 'Saving index...'
-        await indexManager.saveIndex(indexedTools, options.output)
+        const mcpProviderType = options.provider as EmbeddingProviderType
+        await indexManager.saveIndex(indexedTools, options.output, {
+          buildMetadata: {
+            cliVersion: getCliVersion(),
+            cliArgs: { provider: mcpProviderType, dtype, exclude },
+            configFingerprints: createAllConfigFingerprints(),
+          },
+        })
 
         spinner.succeed(`Indexed ${indexedTools.length} tools from MCP servers`)
         success(`Index saved to ${options.output}`)
