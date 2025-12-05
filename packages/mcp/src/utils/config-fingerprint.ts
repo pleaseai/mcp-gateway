@@ -71,15 +71,6 @@ export function createAllConfigFingerprints(cwd?: string): {
 }
 
 /**
- * Get CLI version from package.json.
- *
- * Looks for package.json in the following order:
- * 1. Relative to the compiled module (dist/ -> package root)
- * 2. Current working directory (fallback for development)
- *
- * @returns Version string or 'unknown' if not found
- */
-/**
  * Get config fingerprints for a specific index scope.
  * - Project scope: tracks local + project + user configs (all can affect project index)
  * - User scope: tracks only user config
@@ -107,6 +98,15 @@ export function getConfigFingerprintsForScope(
   return createAllConfigFingerprints(cwd)
 }
 
+/**
+ * Get CLI version from package.json.
+ *
+ * Looks for package.json in the following order:
+ * 1. Relative to the compiled module (dist/ -> package root)
+ * 2. Current working directory (fallback for development)
+ *
+ * @returns Version string or 'unknown' if not found
+ */
 export function getCliVersion(): string {
   try {
     // Get the directory of the current module

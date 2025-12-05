@@ -10,9 +10,23 @@ import {
 import { Command } from 'commander'
 import ora from 'ora'
 import { DEFAULT_CLI_SCOPE, DEFAULT_EMBEDDING_PROVIDER, DEFAULT_INDEX_PATH, DEFAULT_SEARCH_MODE, DEFAULT_TOP_K } from '../constants.js'
+import { CLI_SCOPES, isCliScope } from '../types/index-scope.js'
 import { getIndexPath } from '../utils/index-paths.js'
-import { error, formatSearchResults, info } from '../utils/output.js'
-import { mergeBM25Stats, mergeIndexedTools } from '../utils/tool-deduplication.js'
+import { error, formatSearchResults, info, warn } from '../utils/output.js'
+import { hasAnyEmbeddings, mergeIndexedTools, selectBM25Stats } from '../utils/tool-deduplication.js'
+
+/**
+ * Check if an error indicates the file does not exist (ENOENT)
+ */
+function isFileNotFoundError(err: unknown): boolean {
+  if (err instanceof Error && 'code' in err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT'
+  }
+  if (err instanceof Error) {
+    return err.message.includes('ENOENT') || err.message.includes('no such file')
+  }
+  return false
+}
 
 /**
  * Create the search command
@@ -43,10 +57,9 @@ export function createSearchCommand(): Command {
         const scope = options.scope as CliScope
 
         // Validate scope option
-        const VALID_SCOPES = ['project', 'user', 'all'] as const
-        if (!VALID_SCOPES.includes(scope)) {
+        if (!isCliScope(scope)) {
           spinner.fail(`Invalid scope: "${scope}"`)
-          error(`Valid options: ${VALID_SCOPES.join(', ')}`)
+          error(`Valid options: ${CLI_SCOPES.join(', ')}`)
           process.exit(1)
         }
 
@@ -73,29 +86,39 @@ export function createSearchCommand(): Command {
 
           let projectIndex: PersistedIndex | null = null
           let userIndex: PersistedIndex | null = null
+          let projectLoadFailed = false
+          let userLoadFailed = false
 
           try {
             projectIndex = await indexManager.loadIndex(projectPath)
           }
-          catch {
-            // Project index doesn't exist
+          catch (err) {
+            if (!isFileNotFoundError(err)) {
+              warn(`Failed to load project index at ${projectPath}: ${err instanceof Error ? err.message : err}`)
+              projectLoadFailed = true
+            }
           }
 
           try {
             userIndex = await indexManager.loadIndex(userPath)
           }
-          catch {
-            // User index doesn't exist
+          catch (err) {
+            if (!isFileNotFoundError(err)) {
+              warn(`Failed to load user index at ${userPath}: ${err instanceof Error ? err.message : err}`)
+              userLoadFailed = true
+            }
           }
 
           if (!projectIndex && !userIndex) {
-            spinner.fail('No indexes found. Create an index first with: mcp-gateway index')
+            spinner.fail('No indexes found')
+            error(`Checked:\n  - Project: ${projectPath}${projectLoadFailed ? ' (load failed)' : ''}\n  - User: ${userPath}${userLoadFailed ? ' (load failed)' : ''}`)
+            error('Create an index first with: mcp-gateway index')
             process.exit(1)
           }
 
           tools = mergeIndexedTools(projectIndex, userIndex)
-          bm25Stats = mergeBM25Stats(projectIndex, userIndex)
-          hasEmbeddings = (projectIndex?.hasEmbeddings ?? false) || (userIndex?.hasEmbeddings ?? false)
+          bm25Stats = selectBM25Stats(projectIndex, userIndex)
+          hasEmbeddings = hasAnyEmbeddings(projectIndex, userIndex)
 
           const scopeInfo = []
           if (projectIndex)

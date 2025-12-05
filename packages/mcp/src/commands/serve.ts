@@ -6,11 +6,25 @@ import { Command } from 'commander'
 import ora from 'ora'
 import { DEFAULT_CLI_SCOPE, DEFAULT_EMBEDDING_PROVIDER, DEFAULT_INDEX_PATH, DEFAULT_SEARCH_MODE } from '../constants.js'
 import { McpToolSearchServer } from '../server.js'
+import { CLI_SCOPES, isCliScope } from '../types/index-scope.js'
 import { getCliVersion, getConfigFingerprintsForScope } from '../utils/config-fingerprint.js'
 import { getIndexPath } from '../utils/index-paths.js'
 import { checkIndexRegeneration } from '../utils/index-regeneration.js'
 import { getAllMcpServers, loadToolsFromMcpServers } from '../utils/mcp-config-loader.js'
 import { error, info, warn } from '../utils/output.js'
+
+/**
+ * Check if an error indicates the file does not exist (ENOENT)
+ */
+function isFileNotFoundError(err: unknown): boolean {
+  if (err instanceof Error && 'code' in err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT'
+  }
+  if (err instanceof Error) {
+    return err.message.includes('ENOENT') || err.message.includes('no such file')
+  }
+  return false
+}
 
 /**
  * Create the serve command
@@ -53,10 +67,9 @@ export function createServeCommand(): Command {
         const scope = options.scope as CliScope
 
         // Validate scope option
-        const VALID_SCOPES = ['project', 'user', 'all'] as const
-        if (!VALID_SCOPES.includes(scope)) {
+        if (!isCliScope(scope)) {
           spinner.fail(`Invalid scope: "${scope}"`)
-          error(`Valid options: ${VALID_SCOPES.join(', ')}`)
+          error(`Valid options: ${CLI_SCOPES.join(', ')}`)
           process.exit(1)
         }
 
@@ -180,25 +193,35 @@ export function createServeCommand(): Command {
 
           let projectExists = false
           let userExists = false
+          let projectLoadFailed = false
+          let userLoadFailed = false
 
           try {
             await indexManager.loadIndex(projectPath)
             projectExists = true
           }
-          catch {
-            // Doesn't exist
+          catch (err) {
+            if (!isFileNotFoundError(err)) {
+              warn(`Failed to load project index at ${projectPath}: ${err instanceof Error ? err.message : err}`)
+              projectLoadFailed = true
+            }
           }
 
           try {
             await indexManager.loadIndex(userPath)
             userExists = true
           }
-          catch {
-            // Doesn't exist
+          catch (err) {
+            if (!isFileNotFoundError(err)) {
+              warn(`Failed to load user index at ${userPath}: ${err instanceof Error ? err.message : err}`)
+              userLoadFailed = true
+            }
           }
 
           if (!projectExists && !userExists) {
-            spinner.fail('No indexes found. Create an index first with: mcp-gateway index')
+            spinner.fail('No indexes found')
+            error(`Checked:\n  - Project: ${projectPath}${projectLoadFailed ? ' (load failed)' : ''}\n  - User: ${userPath}${userLoadFailed ? ' (load failed)' : ''}`)
+            error('Create an index first with: mcp-gateway index')
             process.exit(1)
           }
 

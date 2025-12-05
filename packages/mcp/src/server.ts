@@ -10,7 +10,7 @@ import {
 import { z } from 'zod'
 import { createToolExecutor } from './services/tool-executor.js'
 import { generateCliUsage } from './utils/cli-usage.js'
-import { mergeBM25Stats, mergeIndexedTools } from './utils/tool-deduplication.js'
+import { hasAnyEmbeddings, mergeIndexedTools, selectBM25Stats } from './utils/tool-deduplication.js'
 
 /**
  * Extended server config with multi-index support
@@ -18,6 +18,20 @@ import { mergeBM25Stats, mergeIndexedTools } from './utils/tool-deduplication.js
 interface ServerConfig extends BaseServerConfig {
   /** Multiple index paths for scope 'all' mode */
   indexPaths?: string[]
+}
+
+/**
+ * Check if an error indicates the file does not exist (ENOENT)
+ */
+function isFileNotFoundError(err: unknown): boolean {
+  if (err instanceof Error && 'code' in err) {
+    return (err as NodeJS.ErrnoException).code === 'ENOENT'
+  }
+  // Also check for error messages that indicate file not found
+  if (err instanceof Error) {
+    return err.message.includes('ENOENT') || err.message.includes('no such file')
+  }
+  return false
 }
 
 /**
@@ -79,34 +93,52 @@ export class McpToolSearchServer {
    */
   private async loadMergedIndex(): Promise<PersistedIndex> {
     // If multiple index paths specified, load and merge
-    if (this.config.indexPaths && this.config.indexPaths.length > 1) {
+    if (this.config.indexPaths && this.config.indexPaths.length >= 2) {
+      if (this.config.indexPaths.length > 2) {
+        console.error(`[WARN] Only first 2 index paths will be used, ${this.config.indexPaths.length - 2} ignored`)
+      }
       const [projectPath, userPath] = this.config.indexPaths
 
       let projectIndex: PersistedIndex | null = null
       let userIndex: PersistedIndex | null = null
+      let projectLoadError: unknown = null
+      let userLoadError: unknown = null
 
       try {
         projectIndex = await this.indexManager.loadIndex(projectPath)
       }
-      catch {
-        // Project index doesn't exist
+      catch (err) {
+        if (!isFileNotFoundError(err)) {
+          // Log unexpected errors (permission denied, corrupted JSON, etc.)
+          console.error(`[WARN] Failed to load project index at ${projectPath}: ${err instanceof Error ? err.message : err}`)
+          projectLoadError = err
+        }
       }
 
       try {
         userIndex = await this.indexManager.loadIndex(userPath)
       }
-      catch {
-        // User index doesn't exist
+      catch (err) {
+        if (!isFileNotFoundError(err)) {
+          // Log unexpected errors (permission denied, corrupted JSON, etc.)
+          console.error(`[WARN] Failed to load user index at ${userPath}: ${err instanceof Error ? err.message : err}`)
+          userLoadError = err
+        }
       }
 
       if (!projectIndex && !userIndex) {
-        throw new Error('No indexes found')
+        // Provide actionable error message with context
+        const errorLines = ['No indexes found. Checked:']
+        errorLines.push(`  - Project: ${projectPath}${projectLoadError ? ' (load failed)' : ''}`)
+        errorLines.push(`  - User: ${userPath}${userLoadError ? ' (load failed)' : ''}`)
+        errorLines.push('Create an index with: mcp-gateway index')
+        throw new Error(errorLines.join('\n'))
       }
 
       // Merge tools with project taking priority
       const mergedTools = mergeIndexedTools(projectIndex, userIndex)
-      const mergedBm25Stats = mergeBM25Stats(projectIndex, userIndex)
-      const hasEmbeddings = (projectIndex?.hasEmbeddings ?? false) || (userIndex?.hasEmbeddings ?? false)
+      const selectedBm25Stats = selectBM25Stats(projectIndex, userIndex)
+      const hasEmbeddings = hasAnyEmbeddings(projectIndex, userIndex)
 
       // Return synthetic merged index
       return {
@@ -117,7 +149,7 @@ export class McpToolSearchServer {
         hasEmbeddings,
         embeddingModel: projectIndex?.embeddingModel ?? userIndex?.embeddingModel,
         embeddingDimensions: projectIndex?.embeddingDimensions ?? userIndex?.embeddingDimensions,
-        bm25Stats: mergedBm25Stats,
+        bm25Stats: selectedBm25Stats,
         tools: mergedTools,
       }
     }
@@ -167,9 +199,9 @@ Response Format:
       },
       async ({ query, mode, top_k, threshold }) => {
         try {
-          // Load index if not cached
+          // Load index if not cached (use merged index for multi-scope mode)
           if (!this.cachedIndex) {
-            this.cachedIndex = await this.indexManager.loadIndex(this.config.indexPath)
+            this.cachedIndex = await this.loadMergedIndex()
             this.searchOrchestrator.setBM25Stats(this.cachedIndex.bm25Stats)
           }
 
@@ -278,8 +310,9 @@ Response Format:
       },
       async ({ limit, offset }) => {
         try {
+          // Load index if not cached (use merged index for multi-scope mode)
           if (!this.cachedIndex) {
-            this.cachedIndex = await this.indexManager.loadIndex(this.config.indexPath)
+            this.cachedIndex = await this.loadMergedIndex()
           }
 
           const tools = this.cachedIndex.tools.slice(offset, offset + limit).map(t => ({
@@ -348,8 +381,9 @@ RECOMMENDED: Use the cliUsage command via Bash tool instead of call_tool for bet
       },
       async ({ name }) => {
         try {
+          // Load index if not cached (use merged index for multi-scope mode)
           if (!this.cachedIndex) {
-            this.cachedIndex = await this.indexManager.loadIndex(this.config.indexPath)
+            this.cachedIndex = await this.loadMergedIndex()
           }
 
           const indexedTool = this.cachedIndex.tools.find(t => t.tool.name === name)
@@ -437,8 +471,10 @@ RECOMMENDED: Use the cliUsage command via Bash tool instead of call_tool for bet
       this.cachedIndex = await this.loadMergedIndex()
       this.searchOrchestrator.setBM25Stats(this.cachedIndex.bm25Stats)
     }
-    catch {
-      // Index will be loaded on first request
+    catch (err) {
+      // Log the error so operators know something failed during startup
+      console.error(`[WARN] Failed to pre-load index: ${err instanceof Error ? err.message : err}`)
+      console.error('[WARN] Index will be loaded on first request, which may also fail if the issue persists')
     }
 
     if (transport === 'stdio') {

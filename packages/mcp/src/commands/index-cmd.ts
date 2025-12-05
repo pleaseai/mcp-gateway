@@ -9,6 +9,7 @@ import {
 import { Command } from 'commander'
 import ora from 'ora'
 import { DEFAULT_EMBEDDING_PROVIDER, DEFAULT_INDEX_PATH, DEFAULT_INDEX_SCOPE } from '../constants.js'
+import { INDEX_SCOPES, isIndexScope } from '../types/index-scope.js'
 import { getCliVersion, getConfigFingerprintsForScope } from '../utils/config-fingerprint.js'
 import { getIndexPath } from '../utils/index-paths.js'
 import { getAllMcpServers, loadToolsFromMcpServers } from '../utils/mcp-config-loader.js'
@@ -42,10 +43,9 @@ export function createIndexCommand(): Command {
 
       try {
         // Validate scope option
-        const VALID_SCOPES = ['project', 'user'] as const
-        if (!VALID_SCOPES.includes(options.scope)) {
+        if (!isIndexScope(options.scope)) {
           spinner.fail(`Invalid scope: "${options.scope}"`)
-          error(`Valid options: ${VALID_SCOPES.join(', ')}`)
+          error(`Valid options: ${INDEX_SCOPES.join(', ')}`)
           process.exit(1)
         }
         const scope = options.scope as IndexScope
